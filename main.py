@@ -250,13 +250,19 @@ def select_account(data: SelectAccountModel):
 
 @app.post("/api/start")
 def start_bot(cfg: StartConfigModel = None):
-    """Kích hoạt chạy Bot.
-    Có body → wizard mode (dùng config). Không body → legacy mode."""
+    """Khởi chạy bot. Có body → wizard mode (SessionManager process).
+    Không body → legacy single mode (bot_instance)."""
     if cfg is None:
         success = bot_instance.start()
-    else:
-        success = bot_instance.start(config=cfg.dict())
-    return {"status": "ok" if success else "already_running", "bot_status": dashboard["status"]}
+        return {"status": "ok" if success else "already_running", "bot_status": dashboard["status"]}
+
+    # Wizard / direct start → use SessionManager for parallel process execution
+    config = cfg.dict()
+    from session_manager import manager as sm
+    sid = sm.start_session(config)
+    if sid is None:
+        return {"status": "device_busy", "message": "Thiết bị đang bận, đã chuyển vào queue"}
+    return {"status": "ok", "session_id": sid, "bot_status": dashboard["status"]}
 
 @app.post("/api/start-multi")
 def start_multi_account_mode():
