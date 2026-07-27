@@ -415,9 +415,9 @@ async function fetchDevices() {
                 ? `<span class="status-dot status-${d.level}"></span>${d.level === 'online' ? 'Online' : 'Offline'}`
                 : (d.level === 'online' ? '🟢 Online' : '⚫ Offline');
             const baseBtn = d.type === 'wifi'
-                ? `<button class="btn btn-sm btn-primary" onclick="wifiReconnect('${d.id}')" style="padding:2px 8px;font-size:11px;">🔗 Kết nối</button>`
+                ? `<button class="btn btn-sm btn-primary" onclick="wifiReconnect('${d.device_id}')" style="padding:2px 8px;font-size:11px;">🔗 Kết nối</button>`
                 : `<button class="btn btn-sm btn-secondary" onclick="selectDeviceById('${d.id}')" style="padding:2px 8px;font-size:11px;">✅ Chọn</button>`;
-            const actionBtn = baseBtn + ` <button class="btn btn-sm btn-delete" onclick="deleteDevice('${d.id}','${d.type}')" style="padding:2px 8px;font-size:11px;">🗑️ Xóa</button>`;
+            const actionBtn = baseBtn + ` <button class="btn btn-sm btn-delete" onclick="deleteDevice('${d.device_id}','${d.type}')" style="padding:2px 8px;font-size:11px;">🗑️ Xóa</button>`;
             const selectedStyle = d.id === data.selected_device_id ? ' style="background:rgba(108,99,255,0.15);"' : '';
             tbody.innerHTML += `<tr${selectedStyle}>
                 <td>${typeIcon}</td>
