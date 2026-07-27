@@ -472,7 +472,7 @@ Object.defineProperty(navigator, 'vendor', {
         self.job_count += 1
         self.current_job_type = loai_job
         self.current_job_id = job_id
-        self._log(f"Job #{self.job_count} [{job_id}] - {loai_job} ({money_val}đ)")
+        self._log(f"Job #{self.job_count} [{job_id}] - {self.tiktok_account} - {loai_job} ({money_val}đ)")
 
         # Open TikTok via ADB
         self.current_action = f"Đang tương tác {loai_job}..."
