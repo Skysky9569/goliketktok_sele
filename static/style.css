@@ -313,7 +313,7 @@ body {
 .history-count { color: #4a5568; font-size: 13px; }
 
 /* ── Tables ─────────────────────────────────────────────── */
-.table-container { overflow-y: auto; }
+.table-container { overflow-y: auto; max-height: 350px; }
 
 .data-table {
     width: 100%;
