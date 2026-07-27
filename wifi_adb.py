@@ -208,6 +208,7 @@ def get_all_devices(adb_path=None) -> list[dict]:
         online = is_device_online(w.get("ip", ""), w.get("port", 5555), timeout=0.5)
         devices.append({
             "id": serial,
+            "device_id": w.get("id", serial),
             "name": w.get("name", w.get("ip", "")),
             "type": "wifi",
             "level": "online" if online else "offline",
