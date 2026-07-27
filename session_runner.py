@@ -481,7 +481,9 @@ Object.defineProperty(navigator, 'vendor', {
                 self._log(f"Mở link TikTok trên thiết bị {self.device_id}: {link_tiktok}", "INFO")
                 cmd = [self.adb_path, "-s", self.device_id, "shell", "am", "start",
                        "-a", "android.intent.action.VIEW", "-d", link_tiktok]
-                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                if result.returncode != 0:
+                    self._log(f"Lệnh ADB lỗi (code {result.returncode}): {result.stderr.strip()}", "WARNING")
             else:
                 self._log(f"Thiếu device_id hoặc link_tiktok để mở ADB", "WARNING")
         except Exception as e:
