@@ -490,16 +490,19 @@ Object.defineProperty(navigator, 'vendor', {
         # Uiautomator2 click
         try:
             if self.u2_device:
+                # Try to find by text: Follow or Theo dõi
                 follow_btn = self.u2_device(text="Follow") or self.u2_device(text="Theo dõi")
-                if follow_btn.exists:
+                if follow_btn.wait(timeout=5):
                     follow_btn.click()
                     self._log("Clicked Follow button!", "SUCCESS")
                 else:
-                    if self.u2_device(resourceId="com.ss.android.ugc.trill:id/fd7").exists:
-                        self.u2_device(resourceId="com.ss.android.ugc.trill:id/fd7").click()
+                    # Try by resourceId
+                    follow_btn = self.u2_device(resourceId="com.ss.android.ugc.trill:id/fd7")
+                    if follow_btn.wait(timeout=5):
+                        follow_btn.click()
                         self._log("Clicked TikTok button (resourceId)", "SUCCESS")
                     else:
-                        self._log("Không tìm thấy nút Follow", "WARNING")
+                        self._log("Không tìm thấy nút Follow sau 5s", "WARNING")
         except Exception as e:
             self._log(f"Lỗi uiautomator2: {e}", "WARNING")
 
