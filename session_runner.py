@@ -31,20 +31,21 @@ from dashboard import load_accounts, load_tiktok_cache, save_tiktok_cache
 ADB_PATH = r"E:\pythonadb\ADB\adb.exe"
 
 
-def run_session_in_process(session_id: str, config: dict, log_queue):
+def run_session_in_process(session_id: str, config: dict, log_queue, stop_event=None):
     """Entry point for multiprocessing.Process. Creates AccountRunner and runs pipeline."""
-    runner = AccountRunner(session_id, config, log_queue)
+    runner = AccountRunner(session_id, config, log_queue, stop_event)
     runner.run()
 
 
 class AccountRunner:
     """One parallel Chrome session = one thread + one Chrome window + one ADB device."""
 
-    def __init__(self, session_id: str, config: dict, log_queue=None, window_offset: int = 0):
+    def __init__(self, session_id: str, config: dict, log_queue=None, stop_event=None, window_offset: int = 0):
         self.session_id = session_id
         self.config = config
         self.window_offset = window_offset
         self.log_queue = log_queue
+        self._stop_event = stop_event
 
         self.driver = None
         self.u2_device = None
@@ -60,6 +61,23 @@ class AccountRunner:
         self.current_action = "Chờ khởi tạo..."
         self.current_job_type = ""
         self.current_job_id = ""
+
+    def _should_stop(self):
+        """Check if main process signaled stop."""
+        if self._stop_event and self._stop_event.is_set():
+            self.running = False
+            return True
+        return False
+
+    def _safe_sleep(self, seconds: float, check_interval=0.5):
+        """Sleep with stop-event check — exits early if shutdown signaled."""
+        end = time() + seconds
+        while time() < end:
+            if self._should_stop():
+                return False
+            remaining = end - time()
+            sleep(min(check_interval, max(0.1, remaining)))
+        return True
 
     @property
     def adb_path(self):
@@ -259,18 +277,18 @@ Object.defineProperty(navigator, 'vendor', {
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.captcha-switch__link'))
                 )
                 switch_btn.click()
-                sleep(1.5)
+                self._safe_sleep(1.5)
                 switch_btn = WebDriverWait(self.driver, 4).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.captcha-switch__link'))
                 )
                 switch_btn.click()
-                sleep(3.5)
+                self._safe_sleep(3.5)
             except Exception:
                 pass
 
             dn_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]')))
             dn_btn.click()
-            sleep(2)
+            self._safe_sleep(2)
             self._log(f"Logged in: {username}", "SUCCESS")
             return True
         except Exception as e:
@@ -289,11 +307,11 @@ Object.defineProperty(navigator, 'vendor', {
             wait = WebDriverWait(self.driver, 10)
             kiemxu = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[text()='Kiếm xu']")))
             kiemxu.click()
-            sleep(1)
+            self._safe_sleep(1)
 
             tiktok = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Tiktok"]')))
             tiktok.click()
-            sleep(1.5)
+            self._safe_sleep(1.5)
 
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "tk-account-list")))
             taikhoan = self.driver.find_elements(By.CLASS_NAME, "tk-account-item")
@@ -336,7 +354,7 @@ Object.defineProperty(navigator, 'vendor', {
                 self.driver.execute_script("arguments[0].click();", taikhoan[target_index])
             except Exception:
                 taikhoan[target_index].click()
-            sleep(1)
+            self._safe_sleep(1)
             return True
         except Exception as e:
             self._log(f"Lỗi chọn TikTok: {e}", "ERROR")
@@ -350,16 +368,16 @@ Object.defineProperty(navigator, 'vendor', {
             wait = WebDriverWait(self.driver, 8)
             nhan_job = self.driver.find_element(By.CLASS_NAME, "tk-hero__cta")
             nhan_job.click()
-            sleep(1)
+            self._safe_sleep(1)
 
             if self.job_count == 0:
                 try:
                     popup_dahieu = wait.until(EC.element_to_be_clickable((By.ID, "agree")))
                     popup_dahieu.click()
-                    sleep(0.5)
+                    self._safe_sleep(0.5)
                     popup_dongy = self.driver.find_element(By.CSS_SELECTOR, "button.btn.btn-primary")
                     popup_dongy.click()
-                    sleep(0.5)
+                    self._safe_sleep(0.5)
                 except Exception:
                     pass
 
@@ -383,7 +401,7 @@ Object.defineProperty(navigator, 'vendor', {
             skip_btn = self.driver.find_elements(By.XPATH, '//*[contains(text(), "Báo lỗi ")]')
             if skip_btn:
                 skip_btn[0].click()
-                sleep(1)
+                self._safe_sleep(1)
                 gui_baocao = self.driver.find_element(By.XPATH, '//button[contains(normalize-space(), "Gửi báo cáo")]')
                 self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gui_baocao)
                 gui_baocao.click()
@@ -467,7 +485,7 @@ Object.defineProperty(navigator, 'vendor', {
             self._log(f"Lỗi mở link ADB: {e}", "WARNING")
 
         delay_action = int(self.config.get("delay_action", 5))
-        sleep(delay_action)
+        self._safe_sleep(delay_action)
 
         # Uiautomator2 click
         try:
@@ -486,7 +504,7 @@ Object.defineProperty(navigator, 'vendor', {
             self._log(f"Lỗi uiautomator2: {e}", "WARNING")
 
         delay_complete = int(self.config.get("delay_complete", 6))
-        sleep(delay_complete)
+        self._safe_sleep(delay_complete)
 
         # Complete job on GoLike
         try:
@@ -538,16 +556,20 @@ Object.defineProperty(navigator, 'vendor', {
         password = accs[account_id].get("mk", "")
 
         self.current_action = "Đang kết nối thiết bị..."
+        self._push_state()
         if not self.connect_device(device_id=device_id if device_id else None):
             return
         self.current_action = "Đang khởi tạo Chrome..."
+        self._push_state()
         if not self.init_driver():
             return
         self.current_action = "Đang đăng nhập GoLike..."
+        self._push_state()
         if not self.login_golike(username, password):
             return
 
         self.current_action = "Đang chọn tài khoản TikTok..."
+        self._push_state()
         if not self.select_tiktok_section():
             return
 
@@ -558,12 +580,16 @@ Object.defineProperty(navigator, 'vendor', {
         while self.running:
             if self.paused:
                 self.current_action = "Tạm dừng"
+                self._push_state()
                 while self.paused and self.running:
-                    sleep(1)
+                    if self._should_stop():
+                        break
+                    self._safe_sleep(1)
                 if not self.running:
                     break
 
             self.current_action = "Đang lấy job..."
+            self._push_state()
             try:
                 result = self.run_job_cycle()
             except Exception as e:
@@ -589,10 +615,8 @@ Object.defineProperty(navigator, 'vendor', {
             delay_sec = random.randint(delay_min, delay_max)
             self.current_action = f"Chờ job tiếp... {delay_sec}s"
             self._push_state()
-            for s in range(delay_sec, 0, -1):
-                if not self.running:
-                    break
-                sleep(1)
+            if not self._safe_sleep(delay_sec):
+                break
 
         # Cleanup
         self.current_action = "Đang cleanup..."
@@ -605,13 +629,13 @@ Object.defineProperty(navigator, 'vendor', {
         """Nghỉ X phút. Returns True if rest completed, False if stopped."""
         self._log(f"Nghỉ {minutes} phút...", "INFO")
         self.current_action = f"Đang nghỉ {minutes}p..."
+        self._push_state()
         seconds = minutes * 60
-        for s in range(seconds, 0, -1):
-            if not self.running:
-                return False
-            sleep(1)
+        if not self._safe_sleep(seconds):
+            return False
         self._log("Hết thời gian nghỉ.", "INFO")
         self.current_action = "Đang lấy job..."
+        self._push_state()
         return True
 
     # ── Main entry ──────────────────────────────────────────
