@@ -17,11 +17,11 @@ if current_dir not in sys.path:
 from dashboard import dashboard, add_log, add_history, load_accounts
 
 
-def _process_target(session_id, config, log_queue):
+def _process_target(session_id, config, log_queue, stop_event):
     """Entry point for multiprocessing.Process — import inside to avoid
     module-level circular imports in spawned subprocesses."""
     from session_runner import run_session_in_process
-    run_session_in_process(session_id, config, log_queue)
+    run_session_in_process(session_id, config, log_queue, stop_event)
 
 
 class SessionManager:
@@ -108,7 +108,7 @@ class SessionManager:
                 dead = []
                 for sid, entry in list(self.sessions.items()):
                     p = entry.get("process")
-                    if p and not p.is_alive():
+                    if p and not p.is_alive() and not entry.get("stopping_by_user"):
                         dead.append(sid)
                 for sid in dead:
                     add_log(f"Session {sid} process exited.", "INFO")
@@ -139,9 +139,10 @@ class SessionManager:
                         return None
 
         session_id = self._next_id()
+        stop_event = multiprocessing.Event()
         p = multiprocessing.Process(
             target=_process_target,
-            args=(session_id, config, self._log_queue),
+            args=(session_id, config, self._log_queue, stop_event),
             daemon=True,
         )
         p.start()
@@ -153,6 +154,8 @@ class SessionManager:
                 "config": config,
                 "account_id": config.get("account_id", "?"),
                 "username": config.get("username", "?"),
+                "stop_event": stop_event,
+                "stopping_by_user": False,
             }
             dashboard["active_sessions"] = list(self.sessions.keys())
 
@@ -193,15 +196,25 @@ class SessionManager:
     def stop_session(self, session_id: str):
         with self._lock:
             entry = self.sessions.get(session_id)
-        if entry:
-            p = entry.get("process")
-            if p and p.is_alive():
+        if not entry:
+            return
+        # Mark early to prevent monitor duplicate log
+        entry["stopping_by_user"] = True
+        stop_event = entry.get("stop_event")
+        p = entry.get("process")
+
+        # Signal worker to gracefully close Chrome
+        if stop_event:
+            stop_event.set()
+        if p and p.is_alive():
+            p.join(timeout=3)
+            if p.is_alive():
                 p.terminate()
-                p.join(timeout=5)
+                p.join(timeout=2)
                 if p.is_alive():
                     p.kill()
-            add_log(f"Session {session_id} stopped by user.", "WARNING")
-            self._cleanup_session(session_id)
+        add_log(f"Session {session_id} stopped by user.", "WARNING")
+        self._cleanup_session(session_id)
 
     def stop_all(self):
         dashboard["batch_queue"] = []
