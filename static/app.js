@@ -414,9 +414,10 @@ async function fetchDevices() {
             const statusBadge = document.querySelector('.status-' + d.level)
                 ? `<span class="status-dot status-${d.level}"></span>${d.level === 'online' ? 'Online' : 'Offline'}`
                 : (d.level === 'online' ? '🟢 Online' : '⚫ Offline');
-            const actionBtn = d.type === 'wifi'
+            const baseBtn = d.type === 'wifi'
                 ? `<button class="btn btn-sm btn-primary" onclick="wifiReconnect('${d.id}')" style="padding:2px 8px;font-size:11px;">🔗 Kết nối</button>`
                 : `<button class="btn btn-sm btn-secondary" onclick="selectDeviceById('${d.id}')" style="padding:2px 8px;font-size:11px;">✅ Chọn</button>`;
+            const actionBtn = baseBtn + ` <button class="btn btn-sm btn-delete" onclick="deleteDevice('${d.id}','${d.type}')" style="padding:2px 8px;font-size:11px;">🗑️ Xóa</button>`;
             const selectedStyle = d.id === data.selected_device_id ? ' style="background:rgba(108,99,255,0.15);"' : '';
             tbody.innerHTML += `<tr${selectedStyle}>
                 <td>${typeIcon}</td>
@@ -970,6 +971,17 @@ function wifiEditDevice(deviceId) {
     document.getElementById('wifi-device-name').value = device.name || '';
     document.getElementById('wifi-device-ip').value = device.ip || '';
     document.getElementById('wifi-device-port').value = device.port || 5555;
+}
+
+async function deleteDevice(deviceId, type) {
+    // Dispatch theo loại thiết bị:
+    // - wifi: xóa khỏi devices_wifi.json + disconnect ADB
+    // - adb (USB): chỉ rút cáp được, không xóa qua app
+    if (type === 'wifi') {
+        await wifiDeleteDevice(deviceId);
+        return;
+    }
+    showNotification('Không thể xóa thiết bị USB — hãy rút cáp.', 'error');
 }
 
 async function wifiDeleteDevice(deviceId) {
