@@ -257,7 +257,7 @@ def start_bot(cfg: StartConfigModel = None):
         return {"status": "ok" if success else "already_running", "bot_status": dashboard["status"]}
 
     # Wizard / direct start → use SessionManager for parallel process execution
-    config = cfg.dict()
+    config = {k: v for k, v in cfg.dict().items() if v is not None}
     from session_manager import manager as sm
     sid = sm.start_session(config)
     if sid is None:
@@ -368,7 +368,7 @@ def refresh_devices():
 def add_to_queue(cfg: StartConfigModel):
     """Thêm AccountRunConfig vào batch_queue"""
     queue = dashboard.get("batch_queue", [])
-    run_config = cfg.dict()
+    run_config = {k: v for k, v in cfg.dict().items() if v is not None}
     # Enrich with username from accounts file
     accs = load_accounts()
     if run_config["account_id"] in accs:
