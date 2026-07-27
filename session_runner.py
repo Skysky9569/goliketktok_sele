@@ -106,7 +106,7 @@ class AccountRunner:
                     "status": status,
                     "reward": reward,
                     "account_id": str(self.config.get("account_id", "")),
-                    "username": self.account_name or "",
+                    "username": self.tiktok_account or "",
                 })
         except Exception:
             pass
