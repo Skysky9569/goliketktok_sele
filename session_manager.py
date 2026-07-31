@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import multiprocessing
+import subprocess
 from time import sleep
 from queue import Empty
 
@@ -31,7 +32,7 @@ class SessionManager:
 
     def __init__(self):
         self.sessions: dict[str, dict] = {}  # sid → {process, config, ...}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._counter = 0
         self._log_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._monitor_thread = None
@@ -118,7 +119,8 @@ class SessionManager:
                 dashboard["status"] = "STOPPED"
                 dashboard["current_action"] = "Chờ lệnh"
 
-        sleep(0.5)
+            # Adaptive sleep: 2s when idle (no sessions), 0.5s when active
+            sleep(2.0 if not self.sessions else 0.5)
 
     # ── Start ───────────────────────────────────────────────
 
@@ -137,6 +139,17 @@ class SessionManager:
                         )
                         dashboard["batch_queue"].insert(0, config)
                         return None
+
+        # Kill orphaned chromedriver/chrome from crashed sessions (port/process leak)
+        import subprocess as _sp
+        for exe in ("chromedriver.exe",):
+            try:
+                _sp.run(
+                    ["taskkill", "/F", "/FI", "STATUS eq NOT RESPONDING", "/IM", exe],
+                    capture_output=True, timeout=10,
+                )
+            except Exception:
+                pass
 
         session_id = self._next_id()
         stop_event = multiprocessing.Event()
@@ -170,8 +183,16 @@ class SessionManager:
     # ── Done / Feed ─────────────────────────────────────────
 
     def _cleanup_session(self, session_id: str):
-        """Remove finished session and feed queue."""
+        """Remove finished session and feed queue.
+        Cộng dồn stats vào persistent totals trước khi xóa session."""
         with self._lock:
+            session_state = dashboard["sessions"].get(session_id, {})
+            if session_state:
+                dashboard["job"] = dashboard.get("job", 0) + session_state.get("job_count", 0)
+                dashboard["success"] = dashboard.get("success", 0) + session_state.get("success_count", 0)
+                dashboard["failed"] = dashboard.get("failed", 0) + session_state.get("fail_count", 0)
+                dashboard["money"] = dashboard.get("money", 0) + session_state.get("total_money", 0)
+
             self.sessions.pop(session_id, None)
             dashboard["sessions"].pop(session_id, None)
             dashboard["active_sessions"] = list(self.sessions.keys())
@@ -193,28 +214,43 @@ class SessionManager:
 
     # ── Stop ────────────────────────────────────────────────
 
-    def stop_session(self, session_id: str):
+    def stop_session(self, session_id: str) -> bool:
+        """Dừng 1 session. Returns True if session was found and stopped, False if already gone."""
         with self._lock:
             entry = self.sessions.get(session_id)
         if not entry:
-            return
+            return False
         # Mark early to prevent monitor duplicate log
         entry["stopping_by_user"] = True
         stop_event = entry.get("stop_event")
         p = entry.get("process")
+        worker_pid = p.pid if p else None
 
-        # Signal worker to gracefully close Chrome
+        # Signal worker to gracefully close Chrome — closed_driver() now bounded ≤5s.
         if stop_event:
             stop_event.set()
         if p and p.is_alive():
-            p.join(timeout=3)
+            p.join(timeout=10)  # generous: covers close_driver 5s timeout
             if p.is_alive():
                 p.terminate()
-                p.join(timeout=2)
+                p.join(timeout=3)
                 if p.is_alive():
                     p.kill()
+
+        # Belt-and-suspenders: kill entire worker process tree (chromedriver + chrome).
+        # p.kill() chỉ die worker, orphans (chromedriver.exe + chrome.exe) vẫn sống.
+        if worker_pid:
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(worker_pid)],
+                    capture_output=True, timeout=10,
+                )
+            except Exception:
+                pass
+
         add_log(f"Session {session_id} stopped by user.", "WARNING")
         self._cleanup_session(session_id)
+        return True
 
     def stop_all(self):
         dashboard["batch_queue"] = []
