@@ -506,14 +506,23 @@ Object.defineProperty(navigator, 'vendor', {
             tiktok_icon.click()
             return link_tiktok
         except Exception as e:
-            # Truoc day nuot log hoan toan — gay silent fail.
-            # Log canh bao de co visibility khien user khong confused ve trang thai bot.
+            # SweetAlert2 popup xuất hiện khi không nhận được job.
+            # Đọc nội dung để phân biệt: giới hạn ngày (150 jobs) vs tạm thời hết job.
             try:
-                thongbao = self.driver.find_elements(By.CLASS_NAME, "swal2-title")
-                if thongbao:
-                    confirm_btn = self.driver.find_element(By.CLASS_NAME, "swal2-confirm")
-                    confirm_btn.click()
-                    self._log(f"Dong popup sau khi loi nhan job: {e}", "WARNING")
+                title_el = self.driver.find_element(By.ID, "swal2-title")
+                content_el = self.driver.find_element(By.ID, "swal2-content")
+                title = title_el.text.strip() if title_el else ""
+                content = content_el.text.strip() if content_el else ""
+                popup_msg = f"{title}: {content}" if title else content
+                self._log(f"GoLike popup: {popup_msg}", "WARNING")
+
+                # Dismiss popup
+                confirm_btn = self.driver.find_element(By.CLASS_NAME, "swal2-confirm")
+                confirm_btn.click()
+
+                # Giới hạn jobs/ngày → signal dừng session ngay
+                if "quá số jobs" in content or "(150)" in content:
+                    return "__DAILY_LIMIT__"
             except Exception:
                 self._log(f"Loi nhan job (khong tim thay Nhan job / link): {e}", "WARNING")
             return None
@@ -562,6 +571,9 @@ Object.defineProperty(navigator, 'vendor', {
         self.current_job_id = ""
 
         link_tiktok = self.get_job_tiktok()
+        if link_tiktok == "__DAILY_LIMIT__":
+            self._log("Đạt giới hạn 150 jobs/ngày từ GoLike. Dừng session.", "WARNING")
+            return "LIMIT_REACHED"
         if not link_tiktok:
             self.skip_job()
             return "SKIPPED"
@@ -784,6 +796,10 @@ Object.defineProperty(navigator, 'vendor', {
                     if not self._rest_for_duration(rest_duration):
                         break
                     jobs_since_rest = 0
+            elif result == "LIMIT_REACHED":
+                # GoLike báo giới hạn 150 jobs/ngày — dừng session ngay.
+                self._log("Đạt giới hạn jobs/ngày. Dừng session.", "INFO")
+                break
             elif result == "SKIPPED":
                 # "SKIPPED" = hết job hoặc job không khả dụng — không phải lỗi thực sự.
                 # Dùng fail_limit làm ngưỡng skip luôn (nếu có) hoặc default 4.
