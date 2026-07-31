@@ -9,6 +9,7 @@ import os
 import re
 import random
 import subprocess
+import threading
 from time import sleep, time
 
 # Safe path setup
@@ -22,7 +23,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 import uiautomator2 as u2
 
 # Only import file I/O from dashboard — NOT the dict (not shared in subprocess)
@@ -48,6 +49,7 @@ class AccountRunner:
         self._stop_event = stop_event
 
         self.driver = None
+        self._chromedriver_pid = None
         self.u2_device = None
         self.device_id = None
         self.account_name = ""
@@ -69,6 +71,33 @@ class AccountRunner:
             return True
         return False
 
+    def _is_driver_alive(self, timeout: float = 3.0) -> bool:
+        """Kiểm tra nhanh xem Chrome driver còn hoạt động không.
+        Bounded timeout: nếu Chrome/ChromeDriver treo, return False thay vì chờ vô hạn.
+        """
+        if not self.driver:
+            return False
+
+        result_holder = {"ok": False, "exc": None}
+
+        def _probe():
+            try:
+                self.driver.current_url
+                result_holder["ok"] = True
+            except Exception as e:
+                result_holder["exc"] = e
+
+        t = threading.Thread(target=_probe, daemon=True)
+        t.start()
+        t.join(timeout=timeout)
+        if t.is_alive():
+            # Probe hung → assume driver dead, kill thread-truthful state via daemon=True
+            if self._chromedriver_pid:
+                self._log("Chrome probe hung — driver dead, killing chromedriver tree.", "WARNING")
+                self._force_kill_chrome_orphans(self._chromedriver_pid)
+            return False
+        return result_holder["ok"]
+
     def _safe_sleep(self, seconds: float, check_interval=0.5):
         """Sleep with stop-event check — exits early if shutdown signaled."""
         end = time() + seconds
@@ -78,6 +107,14 @@ class AccountRunner:
             remaining = end - time()
             sleep(min(check_interval, max(0.1, remaining)))
         return True
+
+    def _interaction_sleep(self):
+        """Delay giữa các thao tác Chrome DOM để tránh thao tác quá nhanh gây lag máy."""
+        base = float(self.config.get("delay_interaction", 1.5))
+        jitter = float(self.config.get("delay_interaction_jitter", 0.5))
+        delay = max(0.3, base + random.uniform(-jitter, jitter))
+        # Sleep in small chunks with stop-event checking
+        self._safe_sleep(delay, check_interval=0.5)
 
     @property
     def adb_path(self):
@@ -135,15 +172,59 @@ class AccountRunner:
 
     # ── Chrome window management ────────────────────────────
 
-    def close_driver(self):
-        """Đóng Chrome của session này."""
+    def close_driver(self, quit_timeout: float = 5.0):
+        """Đóng Chrome của session này. Force kill orphans nếu driver.quit() hangs hoặc fails."""
+        chromedriver_pid = getattr(self, "_chromedriver_pid", None)
+
         if self.driver:
-            try:
-                self.driver.quit()
+            quit_holder = {"done": False, "exc": None}
+
+            def _do_quit():
+                try:
+                    self.driver.quit()
+                except Exception as e:
+                    quit_holder["exc"] = e
+                finally:
+                    quit_holder["done"] = True
+
+            t = threading.Thread(target=_do_quit, daemon=True)
+            t.start()
+            t.join(timeout=quit_timeout)
+
+            if not quit_holder["done"]:
+                # quit() hung beyond timeout — force kill chromedriver ngay
+                self._log("driver.quit() hung — force killing chromedriver tree.", "WARNING")
+                if chromedriver_pid:
+                    self._force_kill_chrome_orphans(chromedriver_pid)
+            elif quit_holder["exc"]:
+                self._log(f"driver.quit() failed — force killing orphans: {quit_holder['exc']}", "WARNING")
+                if chromedriver_pid:
+                    self._force_kill_chrome_orphans(chromedriver_pid)
+            else:
                 self._log("Chrome window closed.", "INFO")
+
+            self.driver = None
+
+        # Belt-and-suspenders: always kill chromedriver PID + its Chrome child tree.
+        # Covers clean exit (orphans may still exist), hung case, and exception case.
+        if chromedriver_pid:
+            self._force_kill_chrome_orphans(chromedriver_pid)
+
+    @staticmethod
+    def _force_kill_chrome_orphans(chromedriver_pid: int | None = None):
+        """Kill orphaned chromedriver + Chrome processes spawned by this session.
+        Uses taskkill /T (tree) to kill chromedriver and all its Chrome children."""
+        import subprocess as _sp
+
+        if chromedriver_pid:
+            # Kill chromedriver + entire child process tree (includes spawned chrome.exe)
+            try:
+                _sp.run(
+                    ["taskkill", "/F", "/T", "/PID", str(chromedriver_pid)],
+                    capture_output=True, timeout=15,
+                )
             except Exception:
                 pass
-            self.driver = None
 
     def get_adb_devices(self):
         """Lấy danh sách thiết bị ADB đang kết nối."""
@@ -189,6 +270,7 @@ class AccountRunner:
         try:
             options = Options()
             options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--remote-debugging-port=0")  # OS picks free port — no conflicts
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option("useAutomationExtension", False)
             options.add_argument(
@@ -198,6 +280,12 @@ class AccountRunner:
             )
 
             self.driver = webdriver.Chrome(options=options)
+            # Stash chromedriver PID for forceful cleanup if it crashes
+            if hasattr(self.driver, "service") and self.driver.service:
+                try:
+                    self._chromedriver_pid = self.driver.service.process.pid
+                except Exception:
+                    self._chromedriver_pid = None
             self.driver.set_window_size(400, 720)
 
             # Cascade position
@@ -277,18 +365,19 @@ Object.defineProperty(navigator, 'vendor', {
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.captcha-switch__link'))
                 )
                 switch_btn.click()
-                self._safe_sleep(1.5)
+                self._interaction_sleep()
                 switch_btn = WebDriverWait(self.driver, 4).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.captcha-switch__link'))
                 )
                 switch_btn.click()
-                self._safe_sleep(3.5)
+                self._interaction_sleep()
+                self._interaction_sleep()
             except Exception:
                 pass
 
             dn_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]')))
             dn_btn.click()
-            self._safe_sleep(2)
+            self._interaction_sleep()
             self._log(f"Logged in: {username}", "SUCCESS")
             return True
         except Exception as e:
@@ -307,11 +396,11 @@ Object.defineProperty(navigator, 'vendor', {
             wait = WebDriverWait(self.driver, 10)
             kiemxu = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[text()='Kiếm xu']")))
             kiemxu.click()
-            self._safe_sleep(1)
+            self._interaction_sleep()
 
             tiktok = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Tiktok"]')))
             tiktok.click()
-            self._safe_sleep(1.5)
+            self._interaction_sleep()
 
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "tk-account-list")))
             taikhoan = self.driver.find_elements(By.CLASS_NAME, "tk-account-item")
@@ -354,11 +443,42 @@ Object.defineProperty(navigator, 'vendor', {
                 self.driver.execute_script("arguments[0].click();", taikhoan[target_index])
             except Exception:
                 taikhoan[target_index].click()
-            self._safe_sleep(1)
+            self._interaction_sleep()
             return True
         except Exception as e:
             self._log(f"Lỗi chọn TikTok: {e}", "ERROR")
             return False
+
+    def _dump_screen_elements(self, label: str = ""):
+        """Dump UI hierarchy of current screen for debugging click failures.
+        Quan trọng: chỉ gọi khi click fail — không gọi trong flow bình thường để tránh tốn CPU."""
+        if not self.u2_device:
+            return
+        try:
+            self._log(f"[DEBUG-DUMP-{label}] Đang dump UI elements trên màn hình TikTok...", "WARNING")
+            # Hàm lấy UI hierarchy dạng XML/text rút gọn
+            xml = self.u2_device.dump_hierarchy()
+            # Extract key attrs from clickable elements
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(xml)
+            elemens = []
+            for el in root.iter("node"):
+                attrs = el.attrib
+                if attrs.get("clickable") == "true" or attrs.get("checked") == "true":
+                    elemens.append(
+                        f"  resourceId={attrs.get('resource-id','')} "
+                        f"class={attrs.get('class','')} "
+                        f"text='{attrs.get('text','')}' "
+                        f"contentDesc='{attrs.get('content-desc','')}'"
+                    )
+            if elemens:
+                self._log(f"[DEBUG-DUMP-{label}] Clickable elements (top 20):", "WARNING")
+                for e in elemens[:20]:
+                    self._log(f"[DEBUG-DUMP-{label}] {e}", "WARNING")
+            else:
+                self._log(f"[DEBUG-DUMP-{label}] KHÔNG tìm thấy clickable elements nào!", "WARNING")
+        except Exception as e:
+            self._log(f"[DEBUG-DUMP-{label}] Lỗi dump: {e}", "WARNING")
 
     # ── Job Logic ───────────────────────────────────────────
 
@@ -368,16 +488,16 @@ Object.defineProperty(navigator, 'vendor', {
             wait = WebDriverWait(self.driver, 8)
             nhan_job = self.driver.find_element(By.CLASS_NAME, "tk-hero__cta")
             nhan_job.click()
-            self._safe_sleep(1)
+            self._interaction_sleep()
 
             if self.job_count == 0:
                 try:
                     popup_dahieu = wait.until(EC.element_to_be_clickable((By.ID, "agree")))
                     popup_dahieu.click()
-                    self._safe_sleep(0.5)
+                    self._interaction_sleep()
                     popup_dongy = self.driver.find_element(By.CSS_SELECTOR, "button.btn.btn-primary")
                     popup_dongy.click()
-                    self._safe_sleep(0.5)
+                    self._interaction_sleep()
                 except Exception:
                     pass
 
@@ -385,23 +505,28 @@ Object.defineProperty(navigator, 'vendor', {
             link_tiktok = tiktok_icon.get_attribute("href")
             tiktok_icon.click()
             return link_tiktok
-        except Exception:
+        except Exception as e:
+            # Truoc day nuot log hoan toan — gay silent fail.
+            # Log canh bao de co visibility khien user khong confused ve trang thai bot.
             try:
                 thongbao = self.driver.find_elements(By.CLASS_NAME, "swal2-title")
                 if thongbao:
                     confirm_btn = self.driver.find_element(By.CLASS_NAME, "swal2-confirm")
                     confirm_btn.click()
+                    self._log(f"Dong popup sau khi loi nhan job: {e}", "WARNING")
             except Exception:
-                pass
+                self._log(f"Loi nhan job (khong tim thay Nhan job / link): {e}", "WARNING")
             return None
 
     def skip_job(self, link_tiktok="--"):
         """Báo lỗi skip job."""
+        self.current_action = "Đang skip job..."
+        self._push_state()
         try:
             skip_btn = self.driver.find_elements(By.XPATH, '//*[contains(text(), "Báo lỗi ")]')
             if skip_btn:
                 skip_btn[0].click()
-                self._safe_sleep(1)
+                self._interaction_sleep()
                 gui_baocao = self.driver.find_element(By.XPATH, '//button[contains(normalize-space(), "Gửi báo cáo")]')
                 self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gui_baocao)
                 gui_baocao.click()
@@ -475,7 +600,8 @@ Object.defineProperty(navigator, 'vendor', {
         self._log(f"Job #{self.job_count} [{job_id}] - {self.tiktok_account} - {loai_job} ({money_val}đ)")
 
         # Open TikTok via ADB
-        self.current_action = f"Đang tương tác {loai_job}..."
+        self.current_action = f"Đang mở link {loai_job}..."
+        self._push_state()
         try:
             if self.device_id and link_tiktok:
                 self._log(f"Mở link TikTok trên thiết bị {self.device_id}: {link_tiktok}", "INFO")
@@ -489,25 +615,59 @@ Object.defineProperty(navigator, 'vendor', {
         except Exception as e:
             self._log(f"Lỗi mở link ADB: {e}", "WARNING")
 
-        delay_action = int(self.config.get("delay_action", 5))
-        self._safe_sleep(delay_action)
+        # Chọn delay theo loại job
+        if "follow" in loai_job.lower():
+            delay_open = int(self.config.get("delay_follow", 5))
+        elif "favorite" in loai_job.lower():
+            delay_open = int(self.config.get("delay_like", 5))
+        elif "like" in loai_job.lower():
+            delay_open = int(self.config.get("delay_like", 5))
+        else:
+            delay_open = int(self.config.get("delay_action", 5))
+        self._safe_sleep(delay_open)
 
-        # Uiautomator2 click
+        # Uiautomator2 click — phân biệt Follow / Like / Favorite
+        self.current_action = f"Đang {loai_job.lower()}..."
+        self._push_state()
         try:
             if self.u2_device:
-                # Try to find by text: Follow or Theo dõi
-                follow_btn = self.u2_device(text="Follow") or self.u2_device(text="Theo dõi")
-                if follow_btn.wait(timeout=5):
-                    follow_btn.click()
-                    self._log("Clicked Follow button!", "SUCCESS")
+                if "like" in loai_job.lower() and "favorite" not in loai_job.lower():
+                    # ── Like job: click nút Thích ─────────────────
+                    like_btn = self.u2_device(descriptionMatches=r"^Thích.*")
+                    if not like_btn.wait(timeout=5):
+                        like_btn = self.u2_device(resourceId="com.ss.android.ugc.trill:id/fx6",
+                                                   descriptionMatches=r"^Thích.*")
+                    if like_btn.exists:
+                        like_btn.click()
+                        self._log("Clicked Like button!", "SUCCESS")
+                    else:
+                        self._log("Không tìm thấy nút Like sau 5s — dump UI...", "WARNING")
+                        self._dump_screen_elements("LIKE_FAIL")
+                elif "favorite" in loai_job.lower():
+                    # ── Favorite button: click nút Yêu thích ──────
+                    fav_btn = self.u2_device(descriptionContains="Yêu thích")
+                    if not fav_btn.wait(timeout=5):
+                        fav_btn = self.u2_device(resourceId="com.ss.android.ugc.trill:id/hu9")
+                    if fav_btn.wait(timeout=5):
+                        fav_btn.click()
+                        self._log("Clicked Favorite button!", "SUCCESS")
+                    else:
+                        self._log("Không tìm thấy nút Yêu thích sau 5s — dump UI...", "WARNING")
+                        self._dump_screen_elements("FAV_FAIL")
                 else:
-                    # Try by resourceId
-                    follow_btn = self.u2_device(resourceId="com.ss.android.ugc.trill:id/fd7")
+                    # ── Follow button ────────────────────────────
+                    # FIX: UiObject luôn truthy → or không hoạt động. Dùng .exists() thay
+                    follow_btn = self.u2_device(text="Follow")
+                    if not follow_btn.exists:
+                        follow_btn = self.u2_device(text="Theo dõi")
+                    if not follow_btn.wait(timeout=5):
+                        follow_btn = self.u2_device(resourceId="com.ss.android.ugc.trill:id/fd7")
                     if follow_btn.wait(timeout=5):
                         follow_btn.click()
-                        self._log("Clicked TikTok button (resourceId)", "SUCCESS")
+                        self._log("Clicked Follow button!", "SUCCESS")
                     else:
-                        self._log("Không tìm thấy nút Follow sau 5s", "WARNING")
+                        self._log("Không tìm thấy nút Follow sau 5s — dump UI...", "WARNING")
+                        self._dump_screen_elements("FOLLOW_FAIL")
         except Exception as e:
             self._log(f"Lỗi uiautomator2: {e}", "WARNING")
 
@@ -515,6 +675,8 @@ Object.defineProperty(navigator, 'vendor', {
         self._safe_sleep(delay_complete)
 
         # Complete job on GoLike
+        self.current_action = "Đang ấn Hoàn thành..."
+        self._push_state()
         try:
             wait = WebDriverWait(self.driver, 10)
             hoanthanh_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[contains(text(), "Hoàn thành ")]')))
@@ -598,8 +760,19 @@ Object.defineProperty(navigator, 'vendor', {
 
             self.current_action = "Đang lấy job..."
             self._push_state()
+
+            # Driver health check — nếu Chrome bị tắt từ ngoài, dừng ngay
+            if not self._is_driver_alive():
+                self._log("Chrome không phản hồi — dừng session.", "ERROR")
+                self.running = False
+                break
+
             try:
                 result = self.run_job_cycle()
+            except WebDriverException as e:
+                self._log(f"Chrome driver mất kết nối — dừng session: {e}", "ERROR")
+                self.running = False
+                break
             except Exception as e:
                 self._log(f"Lỗi job cycle: {e}", "ERROR")
                 result = "FAILED"
@@ -611,7 +784,15 @@ Object.defineProperty(navigator, 'vendor', {
                     if not self._rest_for_duration(rest_duration):
                         break
                     jobs_since_rest = 0
-            elif result in ("FAILED", "SKIPPED"):
+            elif result == "SKIPPED":
+                # "SKIPPED" = hết job hoặc job không khả dụng — không phải lỗi thực sự.
+                # Dùng fail_limit làm ngưỡng skip luôn (nếu có) hoặc default 4.
+                skip_limit = max(fail_limit, 4) if fail_limit > 0 else 4
+                consecutive_fails += 1
+                if consecutive_fails >= skip_limit:
+                    self._log(f"Hết job khả dụng ({consecutive_fails} lần skip liên tiếp). Dừng.", "INFO")
+                    break
+            elif result == "FAILED":
                 consecutive_fails += 1
                 if fail_limit > 0 and consecutive_fails >= fail_limit:
                     self._log(f"Đạt giới hạn {fail_limit} fail liên tiếp. Dừng.", "WARNING")
