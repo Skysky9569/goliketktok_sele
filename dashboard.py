@@ -19,6 +19,8 @@ DEFAULT_DELAY_CONFIG = {
     "delay_complete": 6,
     "delay_like": 2,
     "delay_follow": 3,
+    "delay_interaction": 1.5,
+    "delay_interaction_jitter": 0.5,
 }
 
 dashboard = {
@@ -45,6 +47,9 @@ dashboard = {
     "delay_complete": 6,
     "delay_like": 2,
     "delay_follow": 3,
+    "delay_interaction": 1.5,
+    "delay_interaction_jitter": 0.5,
+    "captcha_solving": False,
     # Multi-account mode fields
     "multi_account_mode": False,
     "current_account_index": 0,
@@ -203,6 +208,8 @@ def reset_dashboard():
     dashboard["delay_complete"] = 6
     dashboard["delay_like"] = 2
     dashboard["delay_follow"] = 3
+    dashboard["delay_interaction"] = 1.5
+    dashboard["delay_interaction_jitter"] = 0.5
     # Multi-account mode fields
     dashboard["multi_account_mode"] = False
     dashboard["current_account_index"] = 0
