@@ -31,6 +31,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import uiautomator2 as u2
 
@@ -69,6 +70,105 @@ class GoLikeBot:
         delay = base + random.uniform(-jitter, jitter)
         delay = max(0.3, delay)  # tối thiểu 300ms
         sleep(delay)
+
+    def _solve_golike_puzzle(self):
+        """Phát hiện và giải captcha puzzle kéo-thả của GoLike.
+        HTML: div.gk-puzzle-card chứa gk-puzzle-board với 3 phần tử:
+          - gk-puzzle-token (khối vuông kéo)
+          - gk-puzzle-waypoint (vòng nét đứt — kéo qua)
+          - gk-puzzle-target (vòng đích — thả vào)
+        Returns True nếu giải xong, False nếu không phát hiện puzzle hoặc fail.
+        """
+        try:
+            # Check nhanh presence, nếu có → wait visibility
+            card = self.driver.find_elements(By.CSS_SELECTOR, "div.gk-puzzle-card")
+            if not card:
+                return False  # không có captcha
+            try:
+                WebDriverWait(self.driver, 5).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, "div.gk-puzzle-card"))
+                )
+            except TimeoutException:
+                add_log("Captcha puzzle không hiển thị sau 5s — bỏ qua.", "WARNING")
+                return False
+
+            add_log("Phát hiện captcha GoLike puzzle! Đang giải...", "WARNING")
+            dashboard["captcha_solving"] = True
+
+            # Lấy tọa độ 3 phần tử — dùng .rect (dict: x, y, width, height)
+            token = self.driver.find_element(By.CSS_SELECTOR, ".gk-puzzle-token")
+            waypoint = self.driver.find_element(By.CSS_SELECTOR, ".gk-puzzle-waypoint")
+            target = self.driver.find_element(By.CSS_SELECTOR, ".gk-puzzle-target")
+
+            token_rect = token.rect
+            waypoint_rect = waypoint.rect
+            target_rect = target.rect
+
+            # Tính tâm mỗi phần tử
+            token_center = (
+                token_rect["x"] + token_rect["width"] / 2,
+                token_rect["y"] + token_rect["height"] / 2,
+            )
+            waypoint_center = (
+                waypoint_rect["x"] + waypoint_rect["width"] / 2,
+                waypoint_rect["y"] + waypoint_rect["height"] / 2,
+            )
+            target_center = (
+                target_rect["x"] + target_rect["width"] / 2,
+                target_rect["y"] + target_rect["height"] / 2,
+            )
+
+            add_log(
+                f"Puzzle toạ độ: token=({token_center[0]:.0f},{token_center[1]:.0f}) "
+                f"waypoint=({waypoint_center[0]:.0f},{waypoint_center[1]:.0f}) "
+                f"target=({target_center[0]:.0f},{target_center[1]:.0f})",
+                "INFO",
+            )
+
+            delta_x1 = waypoint_center[0] - token_center[0]
+            delta_y1 = waypoint_center[1] - token_center[1]
+            delta_x2 = target_center[0] - waypoint_center[0]
+            delta_y2 = target_center[1] - waypoint_center[1]
+
+            steps_per_segment = 20  # ~1s mỗi đoạn với 50ms pause
+            step_pause_ms = 50
+
+            def _smooth_drag(actions, total_dx, total_dy, steps):
+                """Kéo theo steps bước, dồn residual vào bước cuối để không mất pixel."""
+                step_dx = total_dx // steps
+                step_dy = total_dy // steps
+                residual_x = total_dx - step_dx * steps
+                residual_y = total_dy - step_dy * steps
+                for i in range(steps):
+                    dx = step_dx + (residual_x if i == steps - 1 else 0)
+                    dy = step_dy + (residual_y if i == steps - 1 else 0)
+                    actions.move_by_offset(dx, dy).pause(step_pause_ms / 1000.0)
+
+            actions = ActionChains(self.driver)
+            actions.click_and_hold(token)
+            _smooth_drag(actions, delta_x1, delta_y1, steps_per_segment)
+            _smooth_drag(actions, delta_x2, delta_y2, steps_per_segment)
+            actions.release()
+            actions.perform()
+
+            # Đợi puzzle biến mất
+            try:
+                WebDriverWait(self.driver, 5).until_not(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, "div.gk-puzzle-card"))
+                )
+            except TimeoutException:
+                add_log("Puzzle vẫn hiển thị sau khi drag — thử retry.", "WARNING")
+                dashboard["captcha_solving"] = False
+                return False
+
+            self._interaction_sleep()
+            add_log("Đã giải captcha GoLike puzzle thành công!", "SUCCESS")
+            dashboard["captcha_solving"] = False
+            return True
+        except Exception as e:
+            add_log(f"Giải captcha puzzle thất bại: {e}", "ERROR")
+            dashboard["captcha_solving"] = False
+            return False
 
     def get_adb_devices(self):
         """Lấy danh sách các thiết bị ADB đang kết nối"""
@@ -397,10 +497,19 @@ Object.defineProperty(navigator, 'vendor', {
                 except Exception:
                     pass
 
+            # Phát hiện và giải captcha puzzle kéo-thả của GoLike
+            for attempt in range(2):
+                if self._solve_golike_puzzle():
+                    add_log(f"Captcha solved on attempt {attempt + 1}.", "INFO")
+                    break
+                if attempt == 0:
+                    add_log("Retry giải captcha lần 2...", "WARNING")
+                    self._interaction_sleep()
+
             tiktok_icon = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.bg-button-1')))
             link_tiktok = tiktok_icon.get_attribute("href")
             tiktok_icon.click()
-            
+
             dashboard["job"] += 1
             return link_tiktok
         except Exception as e:
