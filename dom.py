@@ -36,6 +36,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import uiautomator2 as u2
 
 from dashboard import dashboard, logs, history, add_log, add_history, load_accounts, load_tiktok_cache, save_tiktok_cache
+from browser_stealth import get_antidetect_script, get_random_user_agent, get_chrome_options_flags
 from session_manager import manager as session_manager
 
 class GoLikeBot:
@@ -235,48 +236,33 @@ class GoLikeBot:
             return False
 
     def init_driver(self):
-        """Khởi tạo Chrome Selenium với các option chống phát hiện automation (AntiDetect & CDP overrides)"""
+        """Khởi tạo Chrome Selenium với full anti-detect (Cloudflare-grade stealth)."""
         try:
             options = Options()
-            options.add_argument("--disable-blink-features=AutomationControlled")
+
+            # ── Chrome flags từ shared module ──
+            for flag in get_chrome_options_flags():
+                options.add_argument(flag)
+
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option("useAutomationExtension", False)
-            options.add_argument(
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/150.0.7871.127 Safari/537.36"
-            )
-            
+
+            # ── Xoay user-agent ──
+            ua = get_random_user_agent()
+            options.add_argument(f"--user-agent={ua}")
+
             self.driver = webdriver.Chrome(options=options)
             self.driver.set_window_size(400, 720)
-            
-            # Khởi chạy CDP Script overrides trước khi website load
+
+            # ── CDP anti-detection inject (before every page) ──
             self.driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": """
-Object.defineProperty(navigator, 'webdriver', {
-    get: () => undefined
-});
-
-Object.defineProperty(navigator, 'platform', {
-    get: () => 'Win32'
-});
-
-Object.defineProperty(navigator, 'languages', {
-    get: () => ['vi-VN','vi','en-US']
-});
-
-Object.defineProperty(navigator, 'vendor', {
-    get: () => 'Google Inc.'
-});
-"""
-                },
+                {"source": get_antidetect_script()},
             )
-            add_log("Khởi chạy Chrome AntiDetect (CDP inject navigator.webdriver = undefined) thành công.", "INFO")
+            add_log(f"Chrome AntiDetect khởi động — UA: {ua[:50]}...", "INFO")
             return True
         except Exception as e:
-            add_log(f"Khởi chạy Trình duyệt thất bại: {e}", "ERROR")
+            add_log(f"Khởi động Trình duyệt thất bại: {e}", "ERROR")
             self.close_driver()
             return False
 
