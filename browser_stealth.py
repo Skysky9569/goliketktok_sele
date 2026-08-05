@@ -64,35 +64,43 @@ Object.defineProperty(navigator, 'maxTouchPoints', {
     get: () => 0
 });
 
-// ── Plugins / MimeTypes (headless Chrome cũng có ít nhất 5 plugins) ──
-const _fakePlugin = {
-    name: 'Chrome PDF Plugin',
-    filename: 'internal-pdf-viewer',
-    description: 'Portable Document Format',
-    length: 1,
-    item: () => null,
-    namedItem: () => null,
-};
-_nativePluginsLen = Object.getOwnPropertyDescriptor(HTMLPluginsArray.prototype, 'length');
-if (_nativePluginsLen) {
-    Object.defineProperty(navigator, 'plugins', {
-        get: () => {
-            const arr = Object.create(HTMLPluginsArray.prototype);
-            arr[0] = _fakePlugin;
-            arr[1] = _fakePlugin;
-            arr[2] = _fakePlugin;
-            Object.defineProperty(arr, 'length', { get: () => 3 });
-            return arr;
-        }
-    });
-    Object.defineProperty(navigator, 'mimeTypes', {
-        get: () => {
-            const arr = Object.create(MimeTypeArray.prototype);
-            Object.defineProperty(arr, 'length', { get: () => 3 });
-            return arr;
-        }
-    });
-}
+// ── Plugins / MimeTypes (real browser có 3-5 plugins) ──
+// Cloudflare checks navigator.plugins.length > 0 to rule out headless
+(function() {
+    try {
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => {
+                if (navigator._cachedPlugins) return navigator._cachedPlugins;
+                const proto = Object.getPrototypeOf(navigator.plugins);
+                const arr = Object.create(proto);
+                const p = {
+                    name: 'Chrome PDF Plugin',
+                    filename: 'internal-pdf-viewer',
+                    description: 'Portable Document Format',
+                    length: 1,
+                    item: function() { return undefined; },
+                    namedItem: function() { return undefined; },
+                };
+                arr[0] = p;
+                arr[1] = p;
+                arr[2] = p;
+                Object.defineProperty(arr, 'length', { value: 3 });
+                navigator._cachedPlugins = arr;
+                return arr;
+            }
+        });
+        Object.defineProperty(navigator, 'mimeTypes', {
+            get: () => {
+                if (navigator._cachedMimeTypes) return navigator._cachedMimeTypes;
+                const proto = Object.getPrototypeOf(navigator.mimeTypes);
+                const arr = Object.create(proto);
+                Object.defineProperty(arr, 'length', { value: 3 });
+                navigator._cachedMimeTypes = arr;
+                return arr;
+            }
+        });
+    } catch(e) { /* silent fail — non-critical */ }
+})();
 
 // ── Chrome runtime (window.chrome) ──────────────────
 if (!window.chrome) {
@@ -130,66 +138,105 @@ Object.defineProperty(screen, 'availHeight', {
 });
 
 // ── Network info ────────────────────────────────────
-if (navigator.connection) {
-    Object.defineProperty(navigator.connection, 'rtt', {
-        get: () => 50 + Math.floor(Math.random() * 30)
-    });
-}
+try {
+    if (navigator.connection) {
+        Object.defineProperty(navigator.connection, 'rtt', {
+            get: () => 50 + Math.floor(Math.random() * 30)
+        });
+    }
+} catch(e) {}
 
 // ── Canvas fingerprint noise ────────────────────────
-const _origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-HTMLCanvasElement.prototype.toDataURL = function(type) {
-    const ctx = this.getContext('2d');
-    if (ctx) {
-        const imageData = ctx.getImageData(0, 0, this.width || 100, this.height || 100);
-        // Inject ~1% noise to break hash-based fingerprint
-        for (let i = 0; i < imageData.data.length; i += Math.floor(Math.random() * 60) + 50) {
-            imageData.data[i] = imageData.data[i] ^ 1;
-        }
-        ctx.putImageData(imageData, 0, 0);
-    }
-    return _origToDataURL.apply(this, arguments);
-};
-
-const _origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
-    const imageData = _origGetImageData.call(this, x, y, w, h);
-    for (let i = 0; i < imageData.data.length; i += Math.floor(Math.random() * 30) + 10) {
-        imageData.data[i] = imageData.data[i] ^ 1;
-    }
-    return imageData;
-};
-
-// ── WebGL fingerprint spoof (reported GPU: Apple M1 GPU compatible) ──
-const _origGetParameter = WebGLRenderingContext.prototype.getParameter;
-WebGLRenderingContext.prototype.getParameter = function(p) {
-    // UNMASKED_VENDOR_WEBGL (37445)
-    if (p === 37445) return 'Google Inc. (Apple)';
-    // UNMASKED_RENDERER_WEBGL (37446)
-    if (p === 37446) return 'ANGLE (Apple, Apple M1, OpenGL 4.1)';
-    return _origGetParameter.call(this, p);
-};
-
-// ── AudioContext fingerprint noise ──────────────────
+// Injects subtle noise into canvas output so hash-based fingerprinting fails.
+// Guard: use a flag to prevent re-entry (toDataURL may internally call getImageData).
 try {
-    const _origCreateOscillator = AudioContext.prototype.createOscillator;
-    AudioContext.prototype.createOscillator = function() {
-        const osc = _origCreateOscillator.call(this);
-        const _origGetChannelData = osc.getChannelData || function(){return new Float32Array(128)};
-        return osc;
+    const _origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(type) {
+        if (this._noising) return _origToDataURL.apply(this, arguments);
+        this._noising = true;
+        try {
+            const ctx = this.getContext('2d', { willReadFrequently: true });
+            if (ctx && this.width > 0 && this.height > 0) {
+                const imageData = ctx.getImageData(0, 0, this.width, this.height);
+                const len = imageData.data.length;
+                const step = Math.max(1, Math.floor(len / 200));
+                for (let i = step - 1; i < len; i += step) {
+                    imageData.data[i] = imageData.data[i] ^ 1;
+                }
+                ctx.putImageData(imageData, 0, 0);
+            }
+        } catch(e) {}
+        this._noising = false;
+        return _origToDataURL.apply(this, arguments);
     };
 } catch(e) {}
+
+try {
+    const _origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+    CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
+        const imageData = _origGetImageData.call(this, x, y, w, h);
+        try {
+            const len = imageData.data.length;
+            const step = Math.max(1, Math.floor(len / 200));
+            for (let i = step - 1; i < len; i += step) {
+                imageData.data[i] = imageData.data[i] ^ 1;
+            }
+        } catch(e) {}
+        return imageData;
+    };
+} catch(e) {}
+
+// ── WebGL fingerprint spoof (reported GPU: Apple M1 GPU compatible) ──
+(function() {
+    try {
+        const _origGetParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(p) {
+            if (p === 37445) return 'Google Inc. (Apple)';
+            if (p === 37446) return 'ANGLE (Apple, Apple M1, OpenGL 4.1)';
+            return _origGetParameter.call(this, p);
+        };
+    } catch(e) {}
+})();
+
+// ── AudioContext fingerprint noise ──────────────────
+(function() {
+    try {
+        if (typeof AudioContext !== 'undefined') {
+            const _origCreateOscillator = AudioContext.prototype.createOscillator;
+            // Override only if exists; just tiny noise to oscillator frequency
+            if (_origCreateOscillator) {
+                AudioContext.prototype.createOscillator = function() {
+                    const osc = _origCreateOscillator.call(this);
+                    if (osc.frequency) {
+                        const origSet = Object.getOwnPropertyDescriptor(osc.frequency.__proto__, 'value');
+                        if (origSet && origSet.set) {
+                            const origSetter = origSet.set;
+                            Object.defineProperty(osc.frequency, 'value', {
+                                get: function() { return origSet.get ? origSet.get.call(this) : 440; },
+                                set: function(v) { origSetter.call(this, v + (Math.random() - 0.5) * 0.1); }
+                            });
+                        }
+                    }
+                    return osc;
+                };
+            }
+        }
+    } catch(e) {}
+})();
 
 // ── Intl pass-through (locale fingerprint stays real) ──
 // Cloudflare checks navigator.languages against Intl.DateTimeFormat
 // Already set languages above — Intl will match
 
 // ── Clean up automation traces ─────────────────────
-delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
-delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
-delete window.cdc_adoQpoasnfa76pfcZLmcfl_JSON;
-delete window.cdc_adoQpoasnfa76pfcZLmcfl_Proxy;
+try {
+    const _prefix = 'cdc_adoQpoasnfa76pfcZLmcfl_';
+    delete window[_prefix + 'Array'];
+    delete window[_prefix + 'Promise'];
+    delete window[_prefix + 'Symbol'];
+    delete window[_prefix + 'JSON'];
+    delete window[_prefix + 'Proxy'];
+} catch(e) {}
 """
 
 
