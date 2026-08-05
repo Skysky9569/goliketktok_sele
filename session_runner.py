@@ -26,9 +26,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 import uiautomator2 as u2
+from telegram_notifier import send_daily_limit_alert, send_fail_limit_alert
 
 # Only import file I/O from dashboard — NOT the dict (not shared in subprocess)
 from dashboard import load_accounts, load_tiktok_cache, save_tiktok_cache
+from browser_stealth import get_antidetect_script, get_random_user_agent, get_chrome_options_flags
+from cloudflare_solver import detect_cloudflare, solve_cloudflare
 
 ADB_PATH = r"E:\pythonadb\ADB\adb.exe"
 
@@ -267,20 +270,23 @@ class AccountRunner:
     # ── Chrome Selenium ─────────────────────────────────────
 
     def init_driver(self):
-        """Khởi tạo Chrome Selenium với cascade window position."""
+        """Khởi tạo Chrome Selenium với full anti-detect (Cloudflare-grade stealth)."""
         try:
             options = Options()
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_argument("--remote-debugging-port=0")  # OS picks free port — no conflicts
+
+            # ── Chrome flags từ shared module ──
+            for flag in get_chrome_options_flags():
+                options.add_argument(flag)
+
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option("useAutomationExtension", False)
-            options.add_argument(
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/150.0.7871.127 Safari/537.36"
-            )
+
+            # ── Xoay user-agent ──
+            ua = get_random_user_agent()
+            options.add_argument(f"--user-agent={ua}")
 
             self.driver = webdriver.Chrome(options=options)
+
             # Stash chromedriver PID for forceful cleanup if it crashes
             if hasattr(self.driver, "service") and self.driver.service:
                 try:
@@ -294,26 +300,12 @@ class AccountRunner:
             y = self.window_offset * 40
             self.driver.set_window_position(x, y)
 
+            # ── CDP anti-detection inject (before every page) ──
             self.driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": """
-Object.defineProperty(navigator, 'webdriver', {
-    get: () => undefined
-});
-Object.defineProperty(navigator, 'platform', {
-    get: () => 'Win32'
-});
-Object.defineProperty(navigator, 'languages', {
-    get: () => ['vi-VN','vi','en-US']
-});
-Object.defineProperty(navigator, 'vendor', {
-    get: () => 'Google Inc.'
-});
-"""
-                },
+                {"source": get_antidetect_script()},
             )
-            self._log(f"Chrome started at ({x}, {y})", "INFO")
+            self._log(f"Chrome stealth started at ({x}, {y}) — UA: {ua[:50]}...", "INFO")
             return True
         except Exception as e:
             self._log(f"Chrome init failed: {e}", "ERROR")
@@ -348,6 +340,14 @@ Object.defineProperty(navigator, 'vendor', {
         try:
             self._log(f"Login GoLike: {username}")
             self.driver.get("https://app.golike.net/login")
+
+            # ── Cloudflare challenge check ──
+            if detect_cloudflare(self.driver):
+                if not solve_cloudflare(self.driver, max_attempts=3, log_func=self._log):
+                    self._log("Không thể pass Cloudflare challenge tại login!", "ERROR")
+                else:
+                    self._log("Đã pass Cloudflare challenge tại login.", "SUCCESS")
+
             wait = WebDriverWait(self.driver, 12)
 
             tk_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'input[type="text"].form-control')))
@@ -580,6 +580,12 @@ Object.defineProperty(navigator, 'vendor', {
     def get_job_tiktok(self):
         """Nhận job TikTok mới."""
         try:
+            # ── Cloudflare check trước khi nhận job ──
+            if detect_cloudflare(self.driver):
+                if not solve_cloudflare(self.driver, max_attempts=2, log_func=self._log):
+                    self._log("Cloudflare vẫn chặn — skip job này.", "WARNING")
+                    return None
+
             wait = WebDriverWait(self.driver, 8)
             nhan_job = self.driver.find_element(By.CLASS_NAME, "tk-hero__cta")
             nhan_job.click()
@@ -677,6 +683,11 @@ Object.defineProperty(navigator, 'vendor', {
         link_tiktok = self.get_job_tiktok()
         if link_tiktok == "__DAILY_LIMIT__":
             self._log("Đạt giới hạn 150 jobs/ngày từ GoLike. Dừng session.", "WARNING")
+            # Send Telegram alert for daily limit
+            try:
+                send_daily_limit_alert(self.account_name, self.tiktok_account, self.job_count, self.total_money)
+            except Exception:
+                pass
             return "LIMIT_REACHED"
         if not link_tiktok:
             self.skip_job()
@@ -916,6 +927,10 @@ Object.defineProperty(navigator, 'vendor', {
                 consecutive_fails += 1
                 if fail_limit > 0 and consecutive_fails >= fail_limit:
                     self._log(f"Đạt giới hạn {fail_limit} fail liên tiếp. Dừng.", "WARNING")
+                    try:
+                        send_fail_limit_alert(self.account_name, self.tiktok_account, self.job_count, self.total_money, fail_limit, consecutive_fails)
+                    except Exception:
+                        pass
                     break
 
             # Delay between jobs
