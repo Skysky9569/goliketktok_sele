@@ -71,75 +71,106 @@ async function fetchDashboard() {
         }
 
         // Update Stat Cards
-        document.getElementById("stat-job").innerText = data.job || 0;
-        document.getElementById("stat-success").innerText = data.success || 0;
-        document.getElementById("stat-failed").innerText = data.failed || 0;
+        const statJob = document.getElementById("stat-job");
+        if (statJob) statJob.innerText = data.job || 0;
+        const statSuccess = document.getElementById("stat-success");
+        if (statSuccess) statSuccess.innerText = data.success || 0;
+        const statFailed = document.getElementById("stat-failed");
+        if (statFailed) statFailed.innerText = data.failed || 0;
 
         // Format Currency
         const moneyFormatted = new Intl.NumberFormat('vi-VN').format(data.money || 0) + 'đ';
-        document.getElementById("stat-money").innerText = moneyFormatted;
+        const statMoney = document.getElementById("stat-money");
+        if (statMoney) statMoney.innerText = moneyFormatted;
 
         // Calculate Success Rate
         const total = (data.success || 0) + (data.failed || 0);
         const rate = total > 0 ? Math.round((data.success / total) * 100) : 0;
-        document.getElementById("stat-success-rate").innerText = `Tỷ lệ thành công: ${rate}%`;
+        const statSuccessRate = document.getElementById("stat-success-rate");
+        if (statSuccessRate) statSuccessRate.innerText = `Tỷ lệ thành công: ${rate}%`;
 
         // Update Info Rows
-        document.getElementById("info-account").innerText = data.account || "--";
-        document.getElementById("info-device").innerText = data.device || "--";
-        document.getElementById("info-jobtype").innerText = data.job_type || "--";
-        document.getElementById("info-jobid").innerText = data.job_id || "--";
-        document.getElementById("info-current-action").innerText = data.current_action || "Chờ lệnh";
+        const infoAccount = document.getElementById("info-account");
+        if (infoAccount) infoAccount.innerText = data.account || "--";
+        const infoDevice = document.getElementById("info-device");
+        if (infoDevice) infoDevice.innerText = data.device || "--";
+        const infoJobtype = document.getElementById("info-jobtype");
+        if (infoJobtype) infoJobtype.innerText = data.job_type || "--";
+        const infoJobid = document.getElementById("info-jobid");
+        if (infoJobid) infoJobid.innerText = data.job_id || "--";
+        const infoCurrentAction = document.getElementById("info-current-action");
+        if (infoCurrentAction) infoCurrentAction.innerText = data.current_action || "Chờ lệnh";
 
         // Sync delay config inputs (chỉ update nếu user không đang focus vào ô nhập)
         if (document.activeElement.id.indexOf("cfg-delay") === -1) {
-            if (data.delay_job_min !== undefined) document.getElementById("cfg-delay-job-min").value = data.delay_job_min;
-            if (data.delay_job_max !== undefined) document.getElementById("cfg-delay-job-max").value = data.delay_job_max;
-            if (data.delay_action !== undefined) document.getElementById("cfg-delay-action").value = data.delay_action;
-            if (data.delay_complete !== undefined) document.getElementById("cfg-delay-complete").value = data.delay_complete;
-            if (data.delay_like !== undefined) document.getElementById("cfg-delay-like").value = data.delay_like;
-            if (data.delay_follow !== undefined) document.getElementById("cfg-delay-follow").value = data.delay_follow;
+            if (data.delay_job_min !== undefined) {
+                const el = document.getElementById("cfg-delay-job-min");
+                if (el) el.value = data.delay_job_min;
+            }
+            if (data.delay_job_max !== undefined) {
+                const el = document.getElementById("cfg-delay-job-max");
+                if (el) el.value = data.delay_job_max;
+            }
+            if (data.delay_action !== undefined) {
+                const el = document.getElementById("cfg-delay-action");
+                if (el) el.value = data.delay_action;
+            }
+            if (data.delay_complete !== undefined) {
+                const el = document.getElementById("cfg-delay-complete");
+                if (el) el.value = data.delay_complete;
+            }
+            if (data.delay_like !== undefined) {
+                const el = document.getElementById("cfg-delay-like");
+                if (el) el.value = data.delay_like;
+            }
+            if (data.delay_follow !== undefined) {
+                const el = document.getElementById("cfg-delay-follow");
+                if (el) el.value = data.delay_follow;
+            }
+            if (data.delay_interaction !== undefined) {
+                const el = document.getElementById("cfg-delay-interaction");
+                if (el) el.value = data.delay_interaction;
+            }
+            if (data.delay_interaction_jitter !== undefined) {
+                const el = document.getElementById("cfg-delay-interaction-jitter");
+                if (el) el.value = data.delay_interaction_jitter;
+            }
         }
-
-        const rewardFormatted = new Intl.NumberFormat('vi-VN').format(data.reward || 0) + 'đ';
-        document.getElementById("info-reward").innerText = rewardFormatted;
-        document.getElementById("info-runtime").innerText = data.runtime || "0s";
+        const infoReward = document.getElementById("info-reward");
+        if (infoReward) {
+            const rewardFormatted = new Intl.NumberFormat('vi-VN').format(data.reward || 0) + 'đ';
+            infoReward.innerText = rewardFormatted;
+        }
+        const infoRuntime = document.getElementById("info-runtime");
+        if (infoRuntime) infoRuntime.innerText = data.runtime || "0s";
 
         // Update Status Badge
         const statusBadge = document.getElementById("bot-status");
         const statusDot = document.getElementById("status-dot");
-        const currentStatus = (data.status || "STOPPED").toUpperCase();
+        if (statusBadge && statusDot) {
+            const currentStatus = (data.status || "STOPPED").toUpperCase();
 
-        statusBadge.innerText = currentStatus;
-        statusBadge.className = "status-text";
-        statusDot.className = "pulse-dot";
+            statusBadge.innerText = currentStatus;
+            statusBadge.className = "status-text";
+            statusDot.className = "pulse-dot";
 
-        if (currentStatus === "RUNNING") {
-            statusBadge.classList.add("text-running");
-            statusDot.classList.add("dot-running");
-        } else if (currentStatus === "PAUSED") {
-            statusBadge.classList.add("text-paused");
-            statusDot.classList.add("dot-paused");
-        } else if (currentStatus === "STARTING") {
-            statusBadge.classList.add("text-starting");
-            statusDot.classList.add("dot-starting");
-        } else {
-            statusBadge.classList.add("text-stopped");
-            statusDot.classList.add("dot-stopped");
+            if (currentStatus === "RUNNING") {
+                statusBadge.classList.add("text-running");
+                statusDot.classList.add("dot-running");
+            } else if (currentStatus === "PAUSED") {
+                statusBadge.classList.add("text-paused");
+                statusDot.classList.add("dot-paused");
+            } else if (currentStatus === "STARTING") {
+                statusBadge.classList.add("text-starting");
+                statusDot.classList.add("dot-starting");
+            } else {
+                statusBadge.classList.add("text-stopped");
+                statusDot.classList.add("dot-stopped");
+            }
         }
 
-        // Update device selection dropdown
-        const deviceSelect = document.getElementById("device-select");
-        if (data.available_devices && Array.isArray(data.available_devices)) {
-            // Clear existing options except the first placeholder
-            deviceSelect.innerHTML = '<option value="">-- Chọn thiết bị --</option>';
-            data.available_devices.forEach(device => {
-                const option = document.createElement("option");
-                option.value = device;
-                option.textContent = device;
-                deviceSelect.appendChild(option);
-            });
-        }
+        // NOTE: wizard device-select is populated by renderWizStep(2)
+        // Do NOT overwrite it here — polling race causes flicker/reset
     } catch (err) {
         console.error("Lỗi cập nhật dashboard:", err);
     }
@@ -181,8 +212,11 @@ async function fetchHistory() {
         if (!res.ok) return;
         const historyData = await res.json();
 
+        const countEl = document.getElementById("history-count");
+        if (countEl) countEl.innerText = `${historyData.length} bản ghi`;
+
         const tbody = document.getElementById("history-tbody");
-        document.getElementById("history-count").innerText = `${historyData.length} bản ghi`;
+        if (!tbody) return;  // Element doesn't exist in current page
 
         if (!historyData || historyData.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" class="table-empty">Chưa có lịch sử làm job</td></tr>`;
@@ -225,6 +259,7 @@ async function fetchAccounts() {
         const selectedId = data.selected_id || "1";
 
         const tbody = document.getElementById("accounts-tbody");
+        if (!tbody) return;  // Element doesn't exist in current page
         const keys = Object.keys(accs);
 
         if (keys.length === 0) {
@@ -359,6 +394,8 @@ async function saveDelayConfig() {
     const complete = parseInt(document.getElementById("cfg-delay-complete").value) || 6;
     const like = parseInt(document.getElementById("cfg-delay-like").value) || 2;
     const follow = parseInt(document.getElementById("cfg-delay-follow").value) || 3;
+    const interaction = parseFloat(document.getElementById("cfg-delay-interaction").value) || 1.5;
+    const interactionJitter = parseFloat(document.getElementById("cfg-delay-interaction-jitter").value) || 0.5;
 
     if (max < min) {
         alert("Delay max phải >= delay min!");
@@ -375,7 +412,9 @@ async function saveDelayConfig() {
                 delay_action: action,
                 delay_complete: complete,
                 delay_like: like,
-                delay_follow: follow
+                delay_follow: follow,
+                delay_interaction: interaction,
+                delay_interaction_jitter: interactionJitter
             })
         });
         if (res.ok) {
@@ -399,10 +438,12 @@ async function fetchDevices() {
         if (!res.ok) return;
         const data = await res.json();
 
-        document.getElementById("info-device").innerText = data.selected_device_id || "--";
+        const infoDevice = document.getElementById("info-device");
+        if (infoDevice) infoDevice.innerText = data.selected_device_id || "--";
 
         // Populate unified device table
         const tbody = document.getElementById("unified-devices-tbody");
+        if (!tbody) return;  // Element doesn't exist in current page
         const devices = data.unified_devices || [];
         if (!devices.length) {
             tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Ấn "Làm mới" để quét thiết bị</td></tr>';
@@ -596,7 +637,9 @@ function renderWizStep(step) {
     wizardStep = step;
     // Show/hide step divs
     for (let s = 1; s <= 4; s++) {
-        document.getElementById(`wiz-step-${s}`).style.display = (s === step) ? '' : 'none';
+        const el = document.getElementById(`wiz-step-${s}`);
+        el.style.display = (s === step) ? 'block' : 'none';
+        el.classList.toggle('active', s === step);
     }
     // Update step indicators
     document.querySelectorAll('.wiz-step').forEach(el => {
@@ -608,7 +651,7 @@ function renderWizStep(step) {
     // Nav buttons
     document.getElementById('wiz-prev').disabled = (step === 1);
     document.getElementById('wiz-next').style.display = (step < 4) ? '' : 'none';
-    document.getElementById('wiz-launch').style.display = (step === 4) ? '' : 'none';
+    document.getElementById('wiz-start').style.display = (step === 4) ? '' : 'none';
 
     // Populate step content
     if (step === 1) {
@@ -627,17 +670,24 @@ function renderWizStep(step) {
     }
     if (step === 2) {
         const sel = document.getElementById('wiz-device-select');
-        fetch('/api/dashboard').then(r => r.json()).then(d => {
-            const devs = d.unified_devices || [];
+        sel.innerHTML = '<option value="">-- Đang quét thiết bị...</option>';
+        // Force refresh devices first, then populate
+        fetch('/api/refresh_devices', { method: 'POST' }).then(r => r.json()).then(refreshed => {
+            const devs = refreshed.devices || [];
             sel.innerHTML = '<option value="">-- Chọn thiết bị --</option>';
+            if (devs.length === 0) {
+                sel.innerHTML = '<option value="">-- Không tìm thấy thiết bị --</option>';
+            }
             devs.forEach(d => {
                 const icon = d.type === 'adb' ? '📱' : '📡';
                 const sts = d.level === 'online' ? '🟢' : '⚫';
                 sel.innerHTML += `<option value="${d.id}">${icon} ${sts} ${d.name}</option>`;
             });
-            if (devs.length === 1 && !sel.value) {
+            if (devs.length === 1) {
                 sel.value = devs[0].id;
             }
+        }).catch(() => {
+            sel.innerHTML = '<option value="">-- Lỗi quét thiết bị --</option>';
         });
     }
     if (step === 3) {
@@ -699,8 +749,8 @@ function wizLaunch() {
 async function wizScanTiktok() {
     const accId = document.getElementById('wiz-account-select')?.value;
     if (!accId) { alert('Vui lòng chọn acc GoLike trước!'); return; }
-    document.getElementById('wiz-scan-status').style.display = 'inline';
-    document.getElementById('wiz-scan-status').innerText = 'Đang scan...';
+    const statusEl = document.getElementById('wiz-scan-status');
+    if (statusEl) { statusEl.style.display = 'inline'; statusEl.innerText = 'Đang scan...'; }
     try {
         const res = await fetch(`/api/accounts/${accId}/scan-tiktok`, { method: 'POST' });
         if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Scan failed'); }
@@ -710,7 +760,11 @@ async function wizScanTiktok() {
     } catch (err) {
         showNotification('Scan thất bại: ' + err.message, 'error');
     }
-    document.getElementById('wiz-scan-status').style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+}
+
+function skipTikTokSelection() {
+    renderWizStep(4);
 }
 
 // ======================== Batch Queue ========================
@@ -821,6 +875,15 @@ function renderSessions(data) {
 
 function stopSession(sessionId) {
     fetch(`/api/sessions/${sessionId}/stop`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'not_found') {
+                // Session already gone — force refresh to clear stale card
+                fetchSessions();
+                fetchDashboard();
+                fetchLogs();
+            }
+        })
         .then(() => { fetchDashboard(); fetchSessions(); fetchQueue(); fetchLogs(); });
 }
 
@@ -1042,7 +1105,7 @@ async function wifiManualConnect() {
 }
 
 async function wifiSwitchToTCPIP() {
-    const serial = (document.getElementById('device-select') && document.getElementById('device-select').value) || '';
+    const serial = (document.getElementById('wiz-device-select') && document.getElementById('wiz-device-select').value) || '';
     try {
         const res = await fetch('/api/wifi/connect-usb', {
             method: 'POST',
@@ -1062,18 +1125,39 @@ async function wifiSwitchToTCPIP() {
 }
 
 async function wifiPairDevice() {
-    const ip = document.getElementById('wifi-device-ip').value.trim();
-    const code = prompt('Nhập pairing code (hiển thị trên màn hình thiết bị Android):');
-    if (!ip || !code) { showNotification('IP và pairing code không được để trống', 'error'); return; }
+    // Android hiển thị IP:Port + pairing code riêng → cho nhập 1 lần
+    const input = prompt(
+        'Nhập ip:port và mã ghép (cách nhau dấu cách):\nVD: 192.168.1.100:40321 123456',
+    );
+    if (!input || !input.trim()) { return; }
+
+    // Parse: "192.168.1.100:40321 123456" → ip=192.168.1.100, port=40321, code=123456
+    const parts = input.trim().split(/\s+/);
+    if (parts.length < 2) {
+        showNotification('Nhập sai định dạng! VD: 192.168.1.100:40321 123456', 'error');
+        return;
+    }
+    const addr = parts[0]; // "ip:port"
+    const code = parts.slice(1).join(''); // pairing code (ghép các từ sau)
+    const addrParts = addr.split(':');
+    if (addrParts.length < 2) {
+        showNotification('Thiếu dấu ":" giữa IP và port', 'error');
+        return;
+    }
+    const ip = addrParts[0];
+    const port = parseInt(addrParts[1]) || 5555;
 
     try {
         const res = await fetch('/api/wifi/pair', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ip: ip, port: parseInt(document.getElementById('wifi-device-port').value) || 5555, code: code })
+            body: JSON.stringify({ ip: ip, port: port, code: code })
         });
         const data = await res.json();
         if (data.ok) {
+            // Auto-fill IP + Port vào form để dùng cho nút kết nối
+            document.getElementById('wifi-device-ip').value = ip;
+            document.getElementById('wifi-device-port').value = port;
             showNotification(data.message || 'Pairing thành công!', 'success');
         } else {
             showNotification(data.error || 'Pairing thất bại', 'error');
@@ -1093,18 +1177,214 @@ async function wifiRefresh() {
     }
 }
 
+// ═════════════════════════════════════════════════════════════
+// Telegram Bot Management (Multi-Bot)
+// ═════════════════════════════════════════════════════════════
+
+async function loadTelegramBots() {
+    try {
+        const res = await fetch("/api/config/telegram");
+        if (!res.ok) return;
+        const data = await res.json();
+        renderTelegramBots(data.telegram_bots || []);
+    } catch (e) {
+        console.error("Lỗi tải Telegram bots:", e);
+    }
+}
+
+function renderTelegramBots(bots) {
+    const tbody = document.getElementById("telegram-bots-table-body");
+    if (!tbody) return;
+
+    if (bots.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:#4a5568;">Chưa có bot nào. Hãy thêm bot mới.</td></tr>';
+        return;
+    }
+
+    let html = "";
+    bots.forEach((bot, index) => {
+        const name = bot.name || `Bot ${index+1}`;
+        const chatId = bot.chat_id || "";
+        const shortChatId = chatId.length > 15 ? chatId.substring(0, 15) + "..." : chatId;
+        html += `
+            <tr>
+                <td style="padding:8px; color:#e2e8f0;">${name}</td>
+                <td style="padding:8px; color:#94a3b8; font-family:monospace; font-size:12px;" title="${chatId}">${shortChatId}</td>
+                <td style="padding:8px;">
+                    <input type="text" id="test-msg-${index}" placeholder="Tin nhắn test (để trống = mặc định)" style="width:100%; padding:6px 8px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px; font-size:12px;">
+                </td>
+                <td style="padding:8px; display:flex; gap:6px;">
+                    <button class="btn btn-primary btn-sm" onclick="testTelegramBot('${bot.name || ''}', ${index})" title="Gửi test">📤 Test</button>
+                    <button class="btn btn-secondary btn-sm" onclick="editTelegramBot(${index}, ${JSON.stringify(bot).replace(/"/g, '"')})" title="Sửa">✏️ Sửa</button>
+                    <button class="btn btn-delete btn-sm" onclick="deleteTelegramBot(${index})" title="Xóa">🗑️ Xóa</button>
+                </td>
+            </tr>
+        `;
+    });
+    tbody.innerHTML = html;
+}
+
+async function saveTelegramBot() {
+    const name = document.getElementById("cfg-telegram-bot-name").value.trim();
+    const token = document.getElementById("cfg-telegram-bot-token").value.trim();
+    const chatId = document.getElementById("cfg-telegram-chat-id").value.trim();
+    const editIndex = document.getElementById("cfg-telegram-edit-index").value;
+
+    if (!name || !token || !chatId) {
+        showNotification("Vui lòng nhập đầy đủ Tên Bot, Token và Chat ID!", "error");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/config/telegram");
+        const data = await res.json();
+        let bots = data.telegram_bots || [];
+
+        const newBot = { name, token, chat_id: chatId };
+
+        if (editIndex !== "") {
+            // Edit existing
+            bots[parseInt(editIndex)] = newBot;
+            showNotification(`Đã cập nhật bot: ${name}`, "success");
+        } else {
+            // Add new
+            bots.push(newBot);
+            showNotification(`Đã thêm bot mới: ${name}`, "success");
+        }
+
+        await fetch("/api/config/telegram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ telegram_bots: bots })
+        });
+
+        clearTelegramForm();
+        loadTelegramBots();
+        fetchLogs();
+        fetchDashboard();
+    } catch (e) {
+        showNotification("Lỗi lưu bot: " + e.message, "error");
+    }
+}
+
+function editTelegramBot(index, bot) {
+    document.getElementById("cfg-telegram-bot-name").value = bot.name || "";
+    document.getElementById("cfg-telegram-bot-token").value = bot.token || "";
+    document.getElementById("cfg-telegram-chat-id").value = bot.chat_id || "";
+    document.getElementById("cfg-telegram-edit-index").value = index;
+    showNotification(`Đang sửa: ${bot.name}`, "info");
+}
+
+function clearTelegramForm() {
+    document.getElementById("cfg-telegram-bot-name").value = "";
+    document.getElementById("cfg-telegram-bot-token").value = "";
+    document.getElementById("cfg-telegram-chat-id").value = "";
+    document.getElementById("cfg-telegram-edit-index").value = "";
+}
+
+async function deleteTelegramBot(index) {
+    if (!confirm("Bạn có chắc muốn xóa bot này?")) return;
+
+    try {
+        const res = await fetch("/api/config/telegram");
+        const data = await res.json();
+        let bots = data.telegram_bots || [];
+
+        const deletedName = bots[index]?.name || `Bot ${index+1}`;
+        bots.splice(index, 1);
+
+        await fetch("/api/config/telegram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ telegram_bots: bots })
+        });
+
+        showNotification(`Đã xóa bot: ${deletedName}`, "success");
+        loadTelegramBots();
+        fetchLogs();
+        fetchDashboard();
+    } catch (e) {
+        showNotification("Lỗi xóa bot: " + e.message, "error");
+    }
+}
+
+async function testTelegramBot(botName, index) {
+    const customMsg = document.getElementById(`test-msg-${index}`)?.value || "";
+    const message = customMsg.trim() || "✅ *GoLike Bot Test*\\n\\nTelegram notification working from GoLike Dashboard.";
+
+    try {
+        const res = await fetch("/api/config/telegram/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bot_name: botName || undefined, message })
+        });
+
+        if (res.ok) {
+            showNotification(`Đã gửi test tới ${botName || "bot mặc định"}!`, "success");
+            fetchLogs();
+        } else {
+            const err = await res.json();
+            showNotification("Test thất bại: " + (err.detail || "Không rõ lỗi"), "error");
+        }
+    } catch (e) {
+        showNotification("Lỗi kết nối: " + e.message, "error");
+    }
+}
+
+// Keep old function for backward compat
+async function testTelegram() {
+    testTelegramBot("", 0);
+}
+
 // ════════════════════════════════════════════════════════════
-// Polling
+// Polling — giảm tần suất để tránh ăn CPU khi idle
 // ════════════════════════════════════════════════════════════
 
-setInterval(fetchDashboard, 800);
-setInterval(fetchLogs, 1000);
-setInterval(fetchHistory, 2000);
-setInterval(fetchAccounts, 5000);
-setInterval(fetchDevices, 3000); // Update device list every 3 seconds
-setInterval(fetchQueue, 2000);  // Update queue status
-setInterval(fetchSessions, 2000); // Update sessions
-setInterval(fetchWiFiDevices, 4000); // Update WiFi devices
+// Base intervals (ms) — active tab
+const POLL_DASHBOARD  = 2000;   // was 800ms
+const POLL_LOGS       = 2000;   // was 1000ms
+const POLL_HISTORY    = 5000;   // was 2000ms
+const POLL_ACCOUNTS   = 10000;  // was 5000ms
+const POLL_DEVICES    = 5000;   // was 3000ms
+const POLL_QUEUE      = 3000;   // was 2000ms
+const POLL_SESSIONS   = 3000;   // was 2000ms
+const POLL_WIFI       = 8000;   // was 4000ms
+
+let _pollTimers = [];
+
+function _clearAllPollTimers() {
+    _pollTimers.forEach(t => clearInterval(t));
+    _pollTimers = [];
+}
+
+function startPolling() {
+    _clearAllPollTimers();
+    _pollTimers.push(setInterval(fetchDashboard, POLL_DASHBOARD));
+    _pollTimers.push(setInterval(fetchLogs,      POLL_LOGS));
+    _pollTimers.push(setInterval(fetchHistory,   POLL_HISTORY));
+    _pollTimers.push(setInterval(fetchAccounts,  POLL_ACCOUNTS));
+    _pollTimers.push(setInterval(fetchDevices,   POLL_DEVICES));
+    _pollTimers.push(setInterval(fetchQueue,     POLL_QUEUE));
+    _pollTimers.push(setInterval(fetchSessions,  POLL_SESSIONS));
+    _pollTimers.push(setInterval(fetchWiFiDevices, POLL_WIFI));
+}
+
+// Page Visibility API: giảm poll khi tab không focus
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        _clearAllPollTimers();
+        // Tab ẩn → poll chậm gấp 5 lần
+        _pollTimers.push(setInterval(fetchDashboard, POLL_DASHBOARD * 5));
+        _pollTimers.push(setInterval(fetchLogs,      POLL_LOGS * 5));
+    } else {
+        // Tab active → khôi phục poll bình thường + fetch ngay
+        startPolling();
+        fetchDashboard();
+        fetchLogs();
+    }
+});
+
+startPolling();
 
 // Initial Load
 fetchDashboard();
@@ -1115,3 +1395,4 @@ fetchDevices();
 fetchQueue();
 fetchSessions();
 fetchWiFiDevices();
+loadTelegramBots();
