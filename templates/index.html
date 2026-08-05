@@ -4,366 +4,409 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GoLike Automation Control Center</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
     <style>
-        /* Status dot styles */
-        .status-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        .status-running { background-color: #22c55e; }
-        .status-paused { background-color: #eab308; }
-        .status-stopped { background-color: #ef4444; }
-        .status-connecting { background-color: #3b82f6; }
-        .status-resting { background-color: #8b5cf6; }
-        /* Multi-account button */
-        #btn-multi-start {
-            background: linear-gradient(135deg, #059669, #047857);
-            border-color: #047857;
-        }
-        #btn-multi-start:hover {
-            background: linear-gradient(135deg, #047857, #03695a);
-        }
+        * { box-sizing: border-box; margin:0; padding:0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#0a0e1a; color:#e2e8f0; min-height:100vh; }
+        a { color:#6c63ff; text-decoration:none; }
+        a:hover { text-decoration:underline; }
+        .container { max-width:1400px; margin:0 auto; padding:24px; }
+        h1 { font-size:28px; font-weight:700; color:#fff; margin-bottom:4px; }
+        .subtitle { color:#8892b0; margin-bottom:24px; font-size:14px; }
+        /* Panel */
+        .panel-card { background:#1a1f35; border:1px solid rgba(255,255,255,0.06); border-radius:16px; margin-bottom:24px; overflow:hidden; }
+        .panel-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
+        .panel-header h2 { font-size:16px; font-weight:600; color:#fff; display:flex; align-items:center; gap:8px; }
+        .panel-icon { font-size:18px; }
+        .btn-clear-log { background:none; border:1px solid rgba(255,255,255,0.12); color:#8892b0; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12px; transition:all 0.2s; }
+        .btn-clear-log:hover { border-color:rgba(255,255,255,0.3); color:#fff; }
+        /* Buttons */
+        .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 18px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all 0.2s; }
+        .btn-primary { background:linear-gradient(135deg, #6c63ff 0%, #8b5dff 100%); color:#fff; box-shadow:0 4px 20px rgba(108,99,255,0.3); }
+        .btn-primary:hover { box-shadow:0 6px 28px rgba(108,99,255,0.5); transform:translateY(-1px); }
+        .btn-secondary { background:rgba(255,255,255,0.08); color:#e2e8f0; border:1px solid rgba(255,255,255,0.1); }
+        .btn-secondary:hover { background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.2); }
+        .btn-sm { padding:6px 12px; font-size:11px; }
+        .btn-delete { background:#f43f5e; color:#fff; box-shadow:0 2px 10px rgba(244,63,94,0.3); }
+        .btn-delete:hover { background:#e11d48; }
+        .btn-select { background:#6c63ff; color:#fff; }
+        /* Grid */
+        .account-manager-grid { display:grid; grid-template-columns: 1fr 380px; gap:20px; padding:20px; }
+        @media (max-width: 1100px) { .account-manager-grid { grid-template-columns: 1fr; } }
+        .account-form { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:20px; }
+        .account-form h3 { font-size:14px; font-weight:600; color:#a78bfa; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; font-size:12px; color:#8892b0; margin-bottom:6px; font-weight:500; }
+        .form-group small { display:block; margin-top:4px; font-size:11px; }
+        .form-input { width:100%; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:12px 14px; border-radius:10px; font-size:13px; transition:border-color 0.2s; }
+        .form-input:focus { outline:none; border-color:#6c63ff; box-shadow:0 0 0 3px rgba(108,99,255,0.15); }
+        .form-input::placeholder { color:#4a5568; }
+        /* Status */
+        .status-row { display:flex; align-items:center; gap:12px; padding:16px 20px; background:rgba(255,255,255,0.02); border-bottom:1px solid rgba(255,255,255,0.06); }
+        .status-text { font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+        .text-running { color:#22c55e; }
+        .text-paused { color:#eab308; }
+        .text-stopped { color:#64748b; }
+        .text-starting { color:#3b82f6; }
+        .pulse-dot { width:10px; height:10px; border-radius:50%; }
+        .dot-running { background:#22c55e; box-shadow:0 0 10px #22c55e; animation:pulse 1.5s infinite; }
+        .dot-paused { background:#eab308; box-shadow:0 0 10px #eab308; }
+        .dot-stopped { background:#64748b; }
+        .dot-starting { background:#3b82f6; box-shadow:0 0 10px #3b82f6; animation:pulse 1s infinite; }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+        /* Stat Cards */
+        .stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:16px; padding:20px; }
+        .stat-card { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px; text-align:center; }
+        .stat-label { font-size:11px; color:#8892b0; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+        .stat-value { font-size:28px; font-weight:700; color:#fff; line-height:1; }
+        .stat-value.mono { font-family:'JetBrains Mono',monospace; }
+        /* Info Grid */
+        .info-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; padding:0 20px 20px; font-size:13px; }
+        .info-item { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:10px; padding:12px 16px; }
+        .info-label { color:#8892b0; font-size:11px; margin-bottom:2px; }
+        .info-val { color:#fff; font-weight:600; font-family:'JetBrains Mono',monospace; font-size:13px; }
+        /* Badges */
+        .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
+        .badge-success { background:rgba(34,197,94,0.2); color:#22c55e; }
+        .badge-failed { background:rgba(244,63,94,0.2); color:#f43f5e; }
+        .badge-secondary { background:rgba(148,163,184,0.2); color:#94a3b8; }
+        .badge-job { background:rgba(108,99,255,0.2); color:#a78bfa; font-size:11px; padding:2px 8px; border-radius:6px; }
+        .text-success { color:#22c55e; }
+        .font-bold { font-weight:700; }
+        .mono-font { font-family:'JetBrains Mono',monospace; }
+        .table-empty { text-align:center; color:#4a5568; padding:20px; font-size:13px; }
+        /* Tables */
+        table { width:100%; border-collapse:collapse; }
+        th { text-align:left; padding:12px 16px; color:#a78bfa; font-size:12px; font-weight:600; border-bottom:1px solid rgba(255,255,255,0.1); }
+        td { padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px; }
+        tr:hover td { background:rgba(255,255,255,0.02); }
+        /* Log Console */
+        .log-panel { max-height:400px; }
+        .log-console { height:300px; overflow-y:auto; padding:16px 20px; background:#030712; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.6; }
+        .log-line { padding:2px 0; border-bottom:1px solid rgba(255,255,255,0.02); white-space:pre-wrap; word-break:break-word; }
+        .log-info { color:#94a3b8; }
+        .log-success { color:#22c55e; }
+        .log-error { color:#f43f5e; }
+        .log-warning { color:#eab308; }
+        .log-system { color:#6c63ff; }
+        /* Notifications */
+        .notification { position:fixed; bottom:24px; right:24px; padding:14px 20px; border-radius:12px; font-size:13px; font-weight:600; z-index:10000; box-shadow:0 8px 30px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; }
+        .notification.success { background:linear-gradient(135deg, #1a5c2e 0%, #166534 100%); color:#22c55e; border:1px solid rgba(34,197,94,0.3); }
+        .notification.error { background:linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); color:#f43f5e; border:1px solid rgba(244,63,94,0.3); }
+        .notification.info { background:linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); }
+        @keyframes slideIn { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
+        /* Modal */
+        .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; display:flex; justify-content:center; align-items:center; padding:20px; }
+        .modal { background:#1a1f35; border:1px solid #6c63ff; border-radius:16px; padding:24px; width:100%; max-width:500px; max-height:90vh; overflow-y:auto; box-shadow:0 8px 40px rgba(108,99,255,0.4); }
+        .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+        .modal-title { font-size:18px; color:#a78bfa; font-weight:600; }
+        .modal-close { background:none; border:1px solid rgba(255,255,255,0.12); color:#8892b0; width:32px; height:32px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; transition:all 0.2s; }
+        .modal-close:hover { border-color:rgba(255,255,255,0.3); color:#fff; }
+        .wizard-steps { display:flex; gap:6px; margin-bottom:20px; }
+        .wiz-step { padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; font-size:12px; color:#8892b0; }
+        .wiz-step.active { background:#6c63ff; border-color:#6c63ff; color:#fff; }
+        .wizard-step { display:none; }
+        .wizard-step.active { display:block; animation:fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        /* WiFi devices */
+        .device-row { display:flex; align-items:center; gap:12px; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:10px; margin-bottom:8px; }
+        .device-info { flex:1; }
+        .device-name { font-weight:600; color:#fff; }
+        .device-ip { font-size:12px; color:#8892b0; font-family:monospace; }
+        .device-actions { display:flex; gap:8px; }
+        /* Queue */
+        .queue-item { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:10px; margin-bottom:8px; font-size:13px; }
+        .queue-item.current { background:rgba(34,197,94,0.1); }
+        /* Sessions */
+        .session-card { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:10px; background:rgba(255,255,255,0.03); font-size:13px; margin-bottom:8px; }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width:8px; height:8px; }
+        ::-webkit-scrollbar-track { background:#0a0e1a; }
+        ::-webkit-scrollbar-thumb { background:#2d3748; border-radius:4px; }
+        ::-webkit-scrollbar-thumb:hover { background:#4a5568; }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="navbar">
-            <div class="logo-group">
-                <div class="logo-icon">🚀</div>
-                <div>
-                    <h1 class="logo-title">GoLike Bot Dashboard</h1>
-                    <p class="logo-subtitle">Automation & Realtime Monitoring System</p>
-                </div>
-            </div>
-            <div class="status-badge-container">
-                <span class="pulse-dot status-dot" id="status-dot"></span>
+    <div class="container">
+        <header style="margin-bottom:24px;">
+            <h1>🤖 GoLike Automation Control Center</h1>
+            <p class="subtitle">Quản lý tài khoản, thiết bị, và chạy tự động job TikTok</p>
+        </header>
+
+        <!-- Status Row -->
+        <div class="status-row">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div id="status-dot" class="pulse-dot dot-stopped"></div>
                 <span id="bot-status" class="status-text text-stopped">STOPPED</span>
             </div>
-        </header>
+            <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+                <button class="btn btn-primary" id="btn-start" onclick="openStartWizard('start')">▶ Khởi chạy Bot</button>
+                <button class="btn btn-secondary" id="btn-pause" onclick="togglePause()" style="display:none;">⏸ Tạm dừng</button>
+                <button class="btn btn-secondary" id="btn-stop" onclick="stopBot()" style="display:none;">⏹ Dừng</button>
+                <button class="btn btn-secondary" id="btn-add-queue" onclick="openStartWizard('queue')" style="display:none;">➕ Thêm vào Queue</button>
+            </div>
+        </div>
 
         <!-- Stats Grid -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Tổng Job</span>
-                    <span class="stat-icon icon-blue">📋</span>
-                </div>
-                <div class="stat-value" id="stat-job">0</div>
-                <div class="stat-footer">Tất cả nhiệm vụ đã nhận</div>
+                <div class="stat-label">Tổng Job</div>
+                <div class="stat-value mono" id="stat-job">0</div>
             </div>
-
             <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Thành công</span>
-                    <span class="stat-icon icon-green">✅</span>
-                </div>
-                <div class="stat-value text-success" id="stat-success">0</div>
-                <div class="stat-footer" id="stat-success-rate">Tỷ lệ: 0%</div>
+                <div class="stat-label">Thành công</div>
+                <div class="stat-value mono text-success" id="stat-success">0</div>
             </div>
-
             <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Thất bại / Bỏ qua</span>
-                    <span class="stat-icon icon-red">⚠️</span>
-                </div>
-                <div class="stat-value text-danger" id="stat-failed">0</div>
-                <div class="stat-footer">Báo lỗi hoặc không khả dụng</div>
+                <div class="stat-label">Thất bại</div>
+                <div class="stat-value mono" style="color:#f43f5e;" id="stat-failed">0</div>
             </div>
-
-            <div class="stat-card stat-card-highlight">
-                <div class="stat-header">
-                    <span class="stat-title">Tổng tiền tích lũy</span>
-                    <span class="stat-icon icon-gold">💰</span>
-                </div>
-                <div class="stat-value text-gold" id="stat-money">0đ</div>
-                <div class="stat-footer">Doanh thu tạm tính</div>
+            <div class="stat-card">
+                <div class="stat-label">Tiền kiếm được</div>
+                <div class="stat-value" style="color:#eab308;" id="stat-money">0đ</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Tỷ lệ thành công</div>
+                <div class="stat-value" style="color:#a78bfa; font-size:20px;" id="stat-success-rate">Tỷ lệ thành công: 0%</div>
             </div>
         </div>
 
-        <!-- Main Middle Grid -->
-        <div class="middle-grid">
-            <!-- Current Session Card -->
-            <div class="panel-card">
-                <div class="panel-header">
-                    <h2><span class="panel-icon">⚡</span> Trạng thái hiện tại</h2>
-                    <div class="control-actions">
-                        <button id="btn-start" class="btn btn-start" onclick="openStartWizard('start')">
-                            <span>▶</span> Chạy Bot (Wizard)
-                        </button>
-                        <button id="btn-add-queue" class="btn btn-primary" onclick="openStartWizard('queue')" style="display:none;">
-                            <span>➕</span> Thêm vào Queue
-                        </button>
-                        <button id="btn-pause" class="btn btn-pause" onclick="controlBot('pause')">
-                            <span>⏸</span> Tạm dừng
-                        </button>
-                        <button id="btn-stop" class="btn btn-stop" onclick="controlBot('stop')">
-                            <span>⏹</span> Dừng Bot
-                        </button>
-                        <button id="btn-multi-start" class="btn btn-primary" onclick="startMultipleAccounts()">
-                            <span>🔄</span> Chạy tất cả acc
-                        </button>
-                    </div>
-                </div>
-
-                <div class="info-list">
-                    <div class="info-row">
-                        <span class="info-label">Hành động hiện tại</span>
-                        <span class="info-val" id="info-current-action" style="color:#a78bfa; font-weight:600;">Chờ lệnh</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Tài khoản GoLike Active</span>
-                        <span class="info-val" id="info-account">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Acc TikTok ưu tiên</span>
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <input type="text" id="tt-acc-input" placeholder="Nhập STT (1,2..) hoặc Username" class="form-input" style="padding: 4px 8px; font-size: 12px; width: 190px;">
-                            <button class="btn btn-sm btn-primary" onclick="setTikTokAccount()">Lưu</button>
-                        </div>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Thiết bị</span>
-                        <span class="info-val" id="info-device" style="color:#a78bfa;">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Loại Job</span>
-                        <span class="info-val badge-job" id="info-jobtype">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Mã Job (ID)</span>
-                        <span class="info-val mono-font" id="info-jobid">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Thưởng job hiện tại</span>
-                        <span class="info-val text-success" id="info-reward">0đ</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Thời gian chạy</span>
-                        <span class="info-val mono-font" id="info-runtime">0s</span>
-                    </div>
-                </div>
+        <!-- Info Grid -->
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Tài khoản GoLike</div>
+                <div class="info-val" id="info-account">--</div>
             </div>
-
-            <!-- Job History Card -->
-            <div class="panel-card">
-                <div class="panel-header">
-                    <h2><span class="panel-icon">📜</span> Lịch sử Job gần đây</h2>
-                    <span class="history-count" id="history-count">0 items</span>
-                </div>
-
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Thời gian</th>
-                                <th>Tài khoản</th>
-                                <th>Loại Job</th>
-                                <th>Mã Job</th>
-                                <th>Kết quả</th>
-                                <th>Thưởng</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-tbody">
-                            <tr>
-                                <td colspan="6" class="table-empty">Chưa có lịch sử làm job</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="info-item">
+                <div class="info-label">Thiết bị ADB</div>
+                <div class="info-val" id="info-device">--</div>
             </div>
-        </div>
-
-        <!-- Parallel Chrome Sessions Panel -->
-        <div class="panel-card" id="sessions-panel" style="display:none;">
-            <div class="panel-header">
-                <h2><span class="panel-icon">🖥️</span> Chrome Sessions</h2>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <span id="sessions-count" style="color:#a78bfa; font-size:13px;">0 active</span>
-                    <button class="btn btn-sm btn-stop" onclick="stopAllSessions()" style="padding:4px 12px;font-size:12px;">⏹ Dừng Tất Cả</button>
-                </div>
+            <div class="info-item">
+                <div class="info-label">Loại Job</div>
+                <div class="info-val" id="info-jobtype">--</div>
             </div>
-            <div id="sessions-list" style="display:flex; flex-direction:column; gap:8px; padding:12px 20px;">
-                <p style="color:#4a5568; font-size:13px;">Không có session nào đang chạy</p>
+            <div class="info-item">
+                <div class="info-label">Job ID</div>
+                <div class="info-val" id="info-jobid">--</div>
             </div>
-        </div>
-
-        <!-- Batch Queue Panel -->
-        <div class="panel-card" id="queue-panel" style="display:none;">
-            <div class="panel-header">
-                <h2><span class="panel-icon">📋</span> Batch Queue</h2>
-                <span id="queue-status" style="color:#a78bfa; font-size:13px;"></span>
+            <div class="info-item">
+                <div class="info-label">Hành động hiện tại</div>
+                <div class="info-val" id="info-current-action">Chờ lệnh</div>
             </div>
-            <div id="queue-list" style="display:flex; flex-direction:column; gap:8px; padding:12px 20px;">
-                <p style="color:#4a5568; font-size:13px;">Queue trống</p>
+            <div class="info-item">
+                <div class="info-label">Phần thưởng job</div>
+                <div class="info-val" id="info-reward">0đ</div>
             </div>
-        </div>
-
-        <!-- ── Unified Device Management Panel ── -->
-        <div class="panel-card" id="wifi-devices-panel">
-            <div class="panel-header">
-                <h2><span class="panel-icon">📱</span> Thiết bị</h2>
-                <div style="display:flex; gap:8px;">
-                    <button class="btn btn-primary btn-sm" onclick="wifiScanNetwork()" id="btn-wifi-scan">
-                        🔍 Quét Mạng
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="refreshDevices()">
-                        🔄 Làm mới
-                    </button>
-                </div>
-            </div>
-
-            <!-- Unified Device Table (ADB + WiFi) -->
-            <div class="table-container" style="max-height:300px;">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Loại</th>
-                            <th>Thiết bị</th>
-                            <th>ID / IP:Port</th>
-                            <th>Trạng thái</th>
-                            <th>Hành động</th>
-                        </tr>
-                    </thead>
-                    <tbody id="unified-devices-tbody">
-                        <tr>
-                            <td colspan="5" class="table-empty">Ấn "Làm mới" để quét thiết bị</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Scan Progress Bar -->
-            <div id="wifi-scan-progress-container" style="display:none; padding: 0 20px; margin-bottom: 8px;">
-                <div style="height:4px; background:rgba(255,255,255,0.05); border-radius:2px; overflow:hidden;">
-                    <div id="wifi-scan-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#6c63ff,#a78bfa); transition:width 0.3s;"></div>
-                </div>
-                <span id="wifi-scan-status-text" style="color:#6b7280; font-size:12px;"></span>
-            </div>
-
-            <!-- Add / Edit WiFi Form -->
-            <div class="account-form">
-                <h3>Thêm / Sửa Thiết bị WiFi</h3>
-                <input type="hidden" id="wifi-edit-id">
-                <div class="form-group">
-                    <label>Tên thiết bị:</label>
-                    <input type="text" id="wifi-device-name" placeholder="Ví dụ: Redmi Note 12" class="form-input">
-                </div>
-                <div class="form-group" style="display:flex; gap:8px;">
-                    <div style="flex:2;">
-                        <label>Địa chỉ IP:</label>
-                        <input type="text" id="wifi-device-ip" placeholder="192.168.1.100" class="form-input">
-                    </div>
-                    <div style="flex:1;">
-                        <label>Port:</label>
-                        <input type="number" id="wifi-device-port" value="5555" class="form-input" style="padding: 10px 12px;">
-                    </div>
-                </div>
-                <div class="form-group" style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button class="btn btn-primary btn-sm" onclick="wifiSaveDevice()">
-                        💾 Lưu
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="wifiManualConnect()">
-                        🔗 Kết nối
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="wifiSwitchToTCPIP()">
-                        ⚡ USB→WiFi
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="wifiPairDevice()">
-                        🤝 Pairing
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Account Management Panel -->
-        <div class="panel-card">
-            <div class="panel-header">
-                <h2><span class="panel-icon">🔑</span> Quản lý Tài khoản GoLike (`datagolike.json`)</h2>
-            </div>
-            <div class="account-manager-grid">
-                <!-- Add Form -->
-                <div class="account-form">
-                    <h3>Thêm / Cập nhật Tài khoản</h3>
-                    <div class="form-group">
-                        <label>Tài khoản (Username):</label>
-                        <input type="text" id="acc-username" placeholder="Nhập tài khoản GoLike" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label>Mật khẩu (Password):</label>
-                        <input type="password" id="acc-password" placeholder="Nhập mật khẩu GoLike" class="form-input">
-                    </div>
-                    <button class="btn btn-primary" onclick="saveAccount()">💾 Lưu tài khoản</button>
-                </div>
-
-                <!-- Account List Table -->
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Tài khoản</th>
-                                <th>Trạng thái</th>
-                                <th>Hành động</th>
-                            </tr>
-                        </thead>
-                        <tbody id="accounts-tbody">
-                            <tr>
-                                <td colspan="4" class="table-empty">Đang tải danh sách tài khoản...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="info-item">
+                <div class="info-label">Thời gian chạy</div>
+                <div class="info-val" id="info-runtime">0s</div>
             </div>
         </div>
 
         <!-- Delay Config Panel -->
         <div class="panel-card">
             <div class="panel-header">
-                <h2><span class="panel-icon">⚙️</span> Cấu hình Delay (Chống Ban)</h2>
+                <h2><span class="panel-icon">⚙️</span> Cấu hình Delay</h2>
             </div>
             <div class="account-manager-grid">
                 <div class="account-form">
-                    <h3>Thời gian giữa các Job</h3>
+                    <h3>⏱️ Delay cơ bản (giây)</h3>
                     <div class="form-group">
-                        <label>Delay min (giây):</label>
+                        <label>Delay giữa các job (min):</label>
                         <input type="number" id="cfg-delay-job-min" value="8" min="1" max="300" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label>Delay max (giây):</label>
+                        <label>Delay giữa các job (max):</label>
                         <input type="number" id="cfg-delay-job-max" value="14" min="1" max="300" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Delay hành động (click, gõ):</label>
+                        <input type="number" id="cfg-delay-action" value="5" min="1" max="30" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Delay sau khi hoàn thành job:</label>
+                        <input type="number" id="cfg-delay-complete" value="6" min="1" max="30" class="form-input">
                     </div>
                 </div>
                 <div class="account-form">
-                    <h3>Thời gian Thành Thạo</h3>
+                    <h3>💎 Delay tương tác nâng cao</h3>
                     <div class="form-group">
-                        <label>Delay sau mở TikTok (giây):</label>
-                        <input type="number" id="cfg-delay-action" value="5" min="1" max="60" class="form-input">
+                        <label>Delay Like:</label>
+                        <input type="number" id="cfg-delay-like" value="2" min="1" max="20" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label>Delay sau khi click (giây):</label>
-                        <input type="number" id="cfg-delay-complete" value="6" min="1" max="60" class="form-input">
+                        <label>Delay Follow:</label>
+                        <input type="number" id="cfg-delay-follow" value="3" min="1" max="20" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label>Delay sau mỗi like (giây):</label>
-                        <input type="number" id="cfg-delay-like" value="2" min="1" max="10" class="form-input">
+                        <label>Delay tương tác Chrome (giây):</label>
+                        <input type="number" id="cfg-delay-interaction" value="1.5" min="0.3" max="10" step="0.1" class="form-input">
+                        <small style="color:#8892b0;">Delay giữa các thao tác DOM (click, gõ) — tăng nếu máy lag</small>
                     </div>
                     <div class="form-group">
-                        <label>Delay sau mỗi follow (giây):</label>
-                        <input type="number" id="cfg-delay-follow" value="3" min="1" max="10" class="form-input">
+                        <label>± Jitter tương tác (giây):</label>
+                        <input type="number" id="cfg-delay-interaction-jitter" value="0.5" min="0" max="5" step="0.1" class="form-input">
+                        <small style="color:#8892b0;">Độ ngẫu nhiên ± để tránh pattern đều đều</small>
                     </div>
                 </div>
             </div>
             <div style="padding: 0 20px 20px; display:flex; gap:10px; align-items:center;">
-                <button class="btn btn-primary" onclick="saveDelayConfig()">&#x1F4BE; Lưu cấu hình Delay</button>
-                <span id="delay-save-msg" style="font-size:13px; color:#22c55e; display:none;">&#x2705; Đã lưu!</span>
+                <button class="btn btn-primary" onclick="saveDelayConfig()">💾 Lưu cấu hình Delay</button>
+                <span id="delay-save-msg" style="font-size:13px; color:#22c55e; display:none;">✅ Đã lưu!</span>
+            </div>
+        </div>
+
+        <!-- Telegram Bot Management Panel -->
+        <div class="panel-card">
+            <div class="panel-header">
+                <h2><span class="panel-icon">📨</span> Quản lý Telegram Bot</h2>
+            </div>
+            <div class="account-manager-grid">
+                <div class="account-form">
+                    <h3>Thêm / Sửa Bot</h3>
+                    <div class="form-group">
+                        <label>Tên Bot:</label>
+                        <input type="text" id="cfg-telegram-bot-name" placeholder="Ví dụ: Bot Chính, Bot Phụ..." class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Bot Token:</label>
+                        <input type="password" id="cfg-telegram-bot-token" placeholder="123:abc..." class="form-input" autocomplete="off">
+                        <small style="color:#8892b0;">Lấy token từ <a href="https://t.me/BotFather" target="_blank" style="color:#6c63ff;">@BotFather</a></small>
+                    </div>
+                    <div class="form-group">
+                        <label>Chat ID:</label>
+                        <input type="text" id="cfg-telegram-chat-id" placeholder="-12345678 hoặc user_id" class="form-input">
+                        <small style="color:#8892b0;">Chat ID nhận thông báo (group/user)</small>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button type="button" class="btn btn-primary" onclick="saveTelegramBot()">💾 Lưu Bot</button>
+                        <button type="button" class="btn btn-secondary" onclick="clearTelegramForm()">✕ Hủy</button>
+                    </div>
+                    <input type="hidden" id="cfg-telegram-edit-index" value="">
+                </div>
+                <div class="account-form">
+                    <h3>Danh sách Bot đã cấu hình</h3>
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Tên Bot</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Chat ID</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Tin nhắn test</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="telegram-bots-table-body">
+                                <tr><td colspan="4" style="padding:20px; text-align:center; color:#4a5568;">Đang tải...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Accounts Management Panel -->
+        <div class="panel-card">
+            <div class="panel-header">
+                <h2><span class="panel-icon">👤</span> Quản lý Tài khoản GoLike</h2>
+            </div>
+            <div class="account-manager-grid">
+                <div class="account-form">
+                    <h3>➕ Thêm tài khoản mới</h3>
+                    <div class="form-group">
+                        <label>Username:</label>
+                        <input type="text" id="acc-username" placeholder="Tên đăng nhập GoLike" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="acc-password" placeholder="Mật khẩu" class="form-input">
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;" onclick="saveAccount()">💾 Lưu tài khoản</button>
+                </div>
+                <div class="account-form">
+                    <h3>Danh sách tài khoản</h3>
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">ID</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Username</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Trạng thái</th>
+                                    <th style="text-align:left; padding:8px; color:#a78bfa;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="accounts-tbody">
+                                <tr><td colspan="4" class="table-empty">Đang tải...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Device Management Panel -->
+        <div class="panel-card">
+            <div class="panel-header">
+                <h2><span class="panel-icon">📱</span> Quản lý Thiết bị ADB</h2>
+            </div>
+            <div style="padding:20px;">
+                <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="refreshDevices()">🔄 Làm mới</button>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                                <th style="text-align:left; padding:8px; color:#a78bfa;">Loại</th>
+                                <th style="text-align:left; padding:8px; color:#a78bfa;">Tên</th>
+                                <th style="text-align:left; padding:8px; color:#a78bfa;">ID</th>
+                                <th style="text-align:left; padding:8px; color:#a78bfa;">Trạng thái</th>
+                                <th style="text-align:left; padding:8px; color:#a78bfa;">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unified-devices-tbody">
+                            <tr><td colspan="5" class="table-empty">Ấn "Làm mới" để quét thiết bị</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chrome Sessions Panel -->
+        <div class="panel-card" id="sessions-panel" style="display:none;">
+            <div class="panel-header">
+                <h2><span class="panel-icon">🟣</span> Chrome Sessions
+                    <span id="sessions-count" style="font-size:12px; color:#8892b0; margin-left:8px; font-weight:normal;">0 active</span>
+                </h2>
+                <button class="btn btn-sm btn-delete" style="padding:4px 10px;font-size:11px;" onclick="stopAllSessions()">⏹ Dừng tất cả</button>
+            </div>
+            <div id="sessions-list" style="padding:16px 20px;">
+                <p style="color:#4a5568;font-size:13px;">No active sessions</p>
+            </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="panel-card log-panel">
+            <div class="panel-header">
+                <h2><span class="panel-icon">📜</span> Lịch sử Job
+                    <span id="history-count" style="font-size:12px; color:#8892b0; margin-left:8px; font-weight:normal;">0 bản ghi</span>
+                </h2>
+            </div>
+            <div style="overflow-x:auto; max-height:400px;">
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Thời gian</th>
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Tài khoản</th>
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Job Type</th>
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Job ID</th>
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Trạng thái</th>
+                            <th style="text-align:left; padding:8px; color:#a78bfa;">Phần thưởng</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <tr><td colspan="6" class="table-empty">Chưa có lịch sử làm job</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -402,7 +445,7 @@
             </div>
 
             <!-- Step 1: GoLike Account -->
-            <div id="wiz-step-1">
+            <div id="wiz-step-1" class="wizard-step active">
                 <h3 style="color:#e2e8f0; font-size:15px; margin:0 0 12px;">Chọn tài khoản GoLike</h3>
                 <select id="wiz-account-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px;">
                     <option value="">-- Đang tải danh sách acc...</option>
@@ -410,57 +453,116 @@
             </div>
 
             <!-- Step 2: Device -->
-            <div id="wiz-step-2" style="display:none;">
-                <h3 style="margin:0 0 12px; color:#e2e8f0; font-size:15px;">Chọn thiết bị</h3>
+            <div id="wiz-step-2" class="wizard-step">
+                <h3 style="color:#e2e8f0; font-size:15px; margin:0 0 12px;">Chọn thiết bị ADB</h3>
                 <select id="wiz-device-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px;">
-                    <option value="">-- Chọn thiết bị --</option>
+                    <option value="">-- Đang tải thiết bị...</option>
                 </select>
             </div>
 
             <!-- Step 3: TikTok Account -->
-            <div id="wiz-step-3" style="display:none;">
-                <h3 style="margin:0 0 12px; color:#e2e8f0; font-size:15px;">Chọn tài khoản TikTok</h3>
-                <div id="wiz-tiktok-info" style="margin-bottom:10px; color:#4a5568; font-size:12px;"></div>
+            <div id="wiz-step-3" class="wizard-step">
+                <h3 style="color:#e2e8f0; font-size:15px; margin:0 0 12px;">Chọn tài khoản TikTok (tùy chọn)</h3>
+                <div id="wiz-tiktok-info" style="color:#4a5568; font-size:13px; margin-bottom:8px;">Đang tải...</div>
                 <select id="wiz-tiktok-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px;">
-                    <option value="">-- Tự động chọn khi chạy --</option>
+                    <option value="">-- Tự động chọn --</option>
                 </select>
-                <button class="btn btn-sm btn-secondary" onclick="wizScanTiktok()" style="margin-top:8px;">🔍 Quét acc TikTok ngay</button>
-                <span id="wiz-scan-status" style="margin-left:8px; font-size:12px; color:#a78bfa; display:none;">Đang scan...</span>
+                <div style="margin-top:12px; display:flex; gap:8px;">
+                    <button class="btn btn-secondary" onclick="wizScanTiktok()" style="flex:1;">🔍 Scan TikTok</button>
+                    <button class="btn btn-secondary" onclick="skipTikTokSelection()" style="flex:1;">Bỏ qua (tự động)</button>
+                </div>
             </div>
 
             <!-- Step 4: Config -->
-            <div id="wiz-step-4" style="display:none;">
-                <h3 style="margin:0 0 12px; color:#e2e8f0; font-size:15px;">Cấu hình giới hạn</h3>
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="color:#8892b0; font-size:12px; display:block; margin-bottom:4px;">Dừng sau N fail liên tiếp (0 = không giới hạn):</label>
-                    <input type="number" id="wiz-fail-limit" value="0" min="0" class="form-input" style="width:100%;">
+            <div id="wiz-step-4" class="wizard-step">
+                <h3 style="color:#e2e8f0; font-size:15px; margin:0 0 12px;">Cấu hình chạy</h3>
+                <div class="form-group">
+                    <label>Giới hạn fail liên tiếp (0 = không giới hạn):</label>
+                    <input type="number" id="wiz-fail-limit" value="0" min="0" max="20" class="form-input" style="margin-bottom:8px;">
                 </div>
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="color:#8892b0; font-size:12px; display:block; margin-bottom:4px;">Tạm dừng sau M job thành công (0 = không nghỉ):</label>
-                    <input type="number" id="wiz-rest-after" value="0" min="0" class="form-input" style="width:100%;">
+                <div class="form-group">
+                    <label>Nghỉ sau mỗi N job (0 = không nghỉ):</label>
+                    <input type="number" id="wiz-rest-after" value="0" min="0" max="100" class="form-input" style="margin-bottom:8px;">
                 </div>
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="color:#8892b0; font-size:12px; display:block; margin-bottom:4px;">Nghỉ bao nhiêu phút:</label>
-                    <input type="number" id="wiz-rest-duration" value="5" min="1" class="form-input" style="width:100%;">
+                <div class="form-group">
+                    <label>Thời gian nghỉ (phút):</label>
+                    <input type="number" id="wiz-rest-duration" value="5" min="1" max="120" class="form-input" style="margin-bottom:8px;">
                 </div>
             </div>
 
             <!-- Navigation -->
-            <div style="display:flex; justify-content:space-between; margin-top:20px; border-top:1px solid rgba(255,255,255,0.05); padding-top:16px;">
-                <button id="wiz-prev" class="btn btn-secondary" onclick="wizPrev()" disabled>← Quay lại</button>
-                <button id="wiz-next" class="btn btn-primary" onclick="wizNext()">Tiếp theo →</button>
-                <button id="wiz-launch" class="btn btn-start" onclick="wizLaunch()" style="display:none;">▶ Chạy Bot</button>
+            <div style="display:flex; gap:10px; margin-top:20px; justify-content:space-between;">
+                <button class="btn btn-secondary" onclick="wizPrev()" id="wiz-prev" style="display:none;">⬅ Quay lại</button>
+                <button class="btn btn-primary" onclick="wizNext()" id="wiz-next">Tiếp theo ➡</button>
+                <button class="btn btn-primary" onclick="wizLaunch()" id="wiz-start" style="display:none;">🚀 Khởi chạy Bot</button>
             </div>
         </div>
     </div>
 
-    <!-- Modal chọn Acc TikTok -->
-    <div id="tt-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
-        <div style="background:#1a1f35; border:1px solid #6c63ff; border-radius:16px; padding:32px 28px; width:360px; max-width:95vw; box-shadow:0 8px 40px rgba(108,99,255,0.4);">
-            <h3 style="margin:0 0 8px; color:#a78bfa; font-size:18px;">📱 Chọn Tài khoản TikTok</h3>
-            <p style="margin:0 0 20px; color:#8892b0; font-size:13px;">Bot đã quét được <span id="tt-modal-count" style="color:#6c63ff; font-weight:700;">0</span> tài khoản. Hãy chọn tài khoản muốn làm job:</p>
-            <div id="tt-modal-list" style="display:flex; flex-direction:column; gap:10px; max-height:250px; overflow-y:auto; padding-right:4px;"></div>
-            <p style="margin:16px 0 0; color:#4a5568; font-size:11px; text-align:center;">⏳ Bot đang chờ... Tự động chọn acc [1] sau 120 giây nếu không chọn.</p>
+    <!-- ── Queue Modal ──────────────────────────────────────────────────────── -->
+    <div id="queue-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9998; justify-content:center; align-items:center;">
+        <div style="background:#1a1f35; border:1px solid #6c63ff; border-radius:16px; padding:24px; width:600px; max-width:95vw; max-height:90vh; overflow-y:auto; box-shadow:0 8px 40px rgba(108,99,255,0.4);">
+            <h2 style="margin:0 0 4px; color:#a78bfa; font-size:18px; display:flex; justify-content:space-between; align-items:center;">
+                <span>📋 Queue Tài khoản (Chạy tuần tự)</span>
+                <button onclick="closeQueueModal()" style="background:none; border:1px solid rgba(255,255,255,0.12); color:#8892b0; font-size:18px; width:32px; height:32px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+            </h2>
+            <p style="margin:0 0 16px; color:#8892b0; font-size:12px;">Thêm nhiều tài khoản vào queue để chạy từng cái một</p>
+
+            <div class="form-group">
+                <label>Tài khoản GoLike:</label>
+                <select id="queue-account-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px; margin-bottom:8px;">
+                    <option value="">-- Chọn tài khoản --</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Tài khoản TikTok (tùy chọn):</label>
+                <select id="queue-tiktok-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px; margin-bottom:8px;">
+                    <option value="">-- Tự động chọn --</option>
+                </select>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
+                <div class="form-group">
+                    <label>Fail limit:</label>
+                    <input type="number" id="queue-fail-limit" value="0" min="0" max="20" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Nghỉ sau N job:</label>
+                    <input type="number" id="queue-rest-after" value="0" min="0" max="100" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Nghỉ (phút):</label>
+                    <input type="number" id="queue-rest-duration" value="5" min="1" max="120" class="form-input">
+                </div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addToQueue()">➕ Thêm vào Queue</button>
+
+            <div style="margin-top:24px;">
+                <h3 style="color:#e2e8f0; font-size:14px; margin-bottom:12px;">Queue hiện tại</h3>
+                <div id="queue-list" style="max-height:300px; overflow-y:auto;">
+                    <p style="color:#4a5568; text-align:center; padding:20px;">Queue trống</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Custom Telegram Test Modal ───────────────────────────────────────── -->
+    <div id="telegram-test-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:#1a1f35; border:1px solid #6c63ff; border-radius:16px; padding:24px; width:500px; max-width:95vw; box-shadow:0 8px 40px rgba(108,99,255,0.4);">
+            <h3 style="margin:0 0 16px; color:#a78bfa;">📤 Gửi tin nhắn test tùy chỉnh</h3>
+            <div class="form-group">
+                <label>Chọn Bot:</label>
+                <select id="test-bot-select" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px; margin-bottom:8px;">
+                    <option value="">-- Bot mặc định --</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Nội dung tin nhắn:</label>
+                <textarea id="test-message-input" rows="5" style="width:100%; padding:10px; background:#030712; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px; font-family:inherit; resize:vertical;" placeholder="Nhập nội dung tin nhắn... (hỗ trợ Markdown)"></textarea>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+                <button class="btn btn-secondary" onclick="closeTelegramTestModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="sendCustomTelegramTest()">📤 Gửi</button>
+            </div>
         </div>
     </div>
 </body>
